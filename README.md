@@ -1,0 +1,60 @@
+# WireVizard
+
+A lightweight browser tool for documenting physical cabling in a lab setup.
+
+**Live app:** <https://fewagner.github.io/wirevizard/> · **Demo (no setup needed):** <https://fewagner.github.io/wirevizard/?demo=1>
+
+This repository contains only the app — generic static HTML/CSS/JS with no build step and **no data**. The cabling data lives in a separate, private GitHub repository ([`wirevizard-data`](https://github.com/fewagner/wirevizard-data)) holding three plain CSV files. The app talks directly to the GitHub API from the browser; there is no backend.
+
+## How it works
+
+- **Public app repo (this one)** — served by GitHub Pages.
+- **Private data repo** — `cables.csv`, `devices.csv`, `setups.csv`. GitHub itself enforces access: without a token the app is an empty shell.
+- **A fine-grained personal access token (PAT) is the login.** Scoped to only the data repo with *Contents: Read and write*, entered once in the app's Settings, stored in the browser's `localStorage`.
+- **Every Save is one git commit** in the data repo — full history, diffs and blame for free.
+- Edits accumulate locally (they survive reloads) until you press **Save**. Before committing, the app pulls and three-way-merges any remote commits made in the meantime, so concurrent editing is safe; conflicting field edits are reported (local wins, the other value stays in git history).
+
+## Getting started
+
+1. Create a **private** data repository (e.g. `wirevizard-data`) containing `cables.csv`, `devices.csv`, `setups.csv` (the app can also bootstrap an empty repo — just add records and Save).
+2. Create a **fine-grained PAT**: github.com → Settings → Developer settings → Fine-grained tokens → *Repository access: only the data repo*, *Permissions → Contents: Read and write*.
+3. Open the app → **⚙ Settings** → enter owner, repository, branch and the token → *Test connection*.
+4. To onboard a colleague, use **Copy link with token** in Settings — the link embeds the connection settings (including the token!) in the URL fragment, which never reaches any server. Treat such links like the token itself.
+
+## Data model
+
+| File | Purpose |
+|---|---|
+| `cables.csv` | One row per physical cable: `cable_id, from_device, from_port, to_device, to_port, setup, tag` |
+| `devices.csv` | Registry of devices; first two columns `name, description`, every further column one port |
+| `setups.csv` | Registry of measurement setups: `name, description` |
+
+A port column contains either a plain name (`RF out`) or a name with a parenthesised list of internally-connected ports (`A2 (A1)`, bidirectional). The Signal-paths tab traces end-to-end signal chains through cables and these internal connections.
+
+## Features
+
+Query by device or setup · signal-path tracing with tag filter · full cable table with live search and inline editing · editable device/port and setup registries with cascading renames and deletes · validation (missing fields, duplicate IDs, unknown references, undefined ports, port-use conflicts) · demo mode (`?demo=1`).
+
+## Local development
+
+No build step — plain ES modules. Serve the directory with any static server:
+
+```bash
+python3 -m http.server 8742
+# open http://localhost:8742?demo=1
+```
+
+Note that `localStorage` is per-origin: settings entered on `localhost` don't exist on the deployed site (and vice versa).
+
+## Repository layout
+
+```
+index.html        app shell (tabs + forms)
+css/style.css     styles
+js/app.js         boot, tab rendering, event wiring
+js/data.js        domain model: CSV (de)serialization, validation, signal paths, mutations
+js/store.js       settings, base cache, draft, three-way merge, save (one commit)
+js/github.js      minimal GitHub REST client (trees/blobs read, git data API write)
+js/settings.js    settings modal with real read/write permission probes
+js/demo.js        embedded fictional sample data
+```

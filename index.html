@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WireVizard</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔌</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>WireVizard</h1>
+    <div class="sub">Data: <span class="csv-path" id="repo-label">not connected</span></div>
+  </div>
+  <div class="header-actions">
+    <button class="btn-primary" id="save-btn" disabled>Save</button>
+    <button class="reload-btn" id="reload-btn" title="Pull the latest data from GitHub">↻ Refresh</button>
+    <button class="reload-btn" id="settings-btn" title="Settings">⚙ Settings</button>
+  </div>
+</header>
+
+<div id="banner" hidden></div>
+
+<div class="container">
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-tab="query">Query device</button>
+    <button class="tab" data-tab="setup">Query setup</button>
+    <button class="tab" data-tab="signal-paths">Signal paths</button>
+    <button class="tab" data-tab="all">All cables</button>
+    <button class="tab" data-tab="all-devices">All devices</button>
+    <button class="tab" data-tab="all-setups">All setups</button>
+    <button class="tab" data-tab="add">+ Add cable</button>
+    <button class="tab" data-tab="add-device">+ Add device</button>
+    <button class="tab" data-tab="add-setup">+ Add setup</button>
+    <button class="tab" data-tab="validate">Validate</button>
+  </div>
+
+  <!-- Query device -->
+  <div id="tab-query">
+    <div class="chip-row" id="device-chips"></div>
+    <div id="query-result"><div class="empty">Select a device above to see its cables</div></div>
+  </div>
+
+  <!-- Query setup -->
+  <div id="tab-setup" style="display:none">
+    <div class="chip-row" id="setup-chips"></div>
+    <div id="setup-result"><div class="empty">Select a setup above to see its cables</div></div>
+  </div>
+
+  <!-- Signal Paths -->
+  <div id="tab-signal-paths" style="display:none">
+    <div class="chip-row" id="signal-setup-chips"></div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:12px;font-weight:500;color:var(--text2);display:block;margin-bottom:5px">Filter by tag</label>
+      <input type="text" id="signal-tag-filter" placeholder="optional tag filter — narrows to paths containing a cable with this tag" style="max-width:380px;margin-bottom:0">
+    </div>
+    <div id="signal-paths-result"><div class="empty">Select a setup above to see signal paths</div></div>
+  </div>
+
+  <!-- All cables -->
+  <div id="tab-all" style="display:none">
+    <div class="stat-row" id="stats"></div>
+    <input type="text" id="search" placeholder="Filter by device, cable ID, setup, tag…">
+    <div class="card" style="overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th>ID</th><th>From device</th><th>Port</th>
+          <th>To device</th><th>Port</th><th>Setup</th><th>Tag</th><th></th>
+        </tr></thead>
+        <tbody id="all-tbody"></tbody>
+      </table>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:-8px">
+      Double-click any cell to edit it in place.
+    </div>
+  </div>
+
+  <!-- Validate -->
+  <div id="tab-validate" style="display:none">
+    <div id="validate-out"></div>
+  </div>
+
+  <!-- Add cable -->
+  <div id="tab-add" style="display:none">
+    <div class="card">
+      <div style="font-size:13px;font-weight:500;margin-bottom:16px">New cable entry</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Cable ID</label>
+          <input type="text" id="f-id" placeholder="auto-generated">
+          <span class="hint">Leave blank to auto-assign (e.g. C001)</span>
+        </div>
+        <div class="field">
+          <label>Setup</label>
+          <select id="f-setup"></select>
+        </div>
+        <div class="field">
+          <label>From device *</label>
+          <select id="f-from-dev"></select>
+        </div>
+        <div class="field">
+          <label>From port *</label>
+          <div id="f-from-port-wrap"><input type="text" id="f-from-port" placeholder="e.g. 1 out, eth0"></div>
+        </div>
+        <div class="field">
+          <label>To device *</label>
+          <select id="f-to-dev"></select>
+        </div>
+        <div class="field">
+          <label>To port *</label>
+          <div id="f-to-port-wrap"><input type="text" id="f-to-port" placeholder="e.g. A2, port-06"></div>
+        </div>
+        <div class="field full">
+          <label>Tag</label>
+          <input type="text" id="f-tag" placeholder="optional label or note">
+        </div>
+      </div>
+      <div class="submit-row">
+        <button class="btn-primary" id="submit-cable">Add cable</button>
+        <button class="btn-secondary" id="clear-cable">Clear</button>
+        <span id="flash"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add device -->
+  <div id="tab-add-device" style="display:none">
+    <div class="card">
+      <div style="font-size:13px;font-weight:500;margin-bottom:16px">New device entry</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Name *</label>
+          <input type="text" id="d-name" placeholder="e.g. SHFQA">
+        </div>
+        <div class="field">
+          <label>Description</label>
+          <input type="text" id="d-desc" placeholder="optional">
+        </div>
+        <div class="field full">
+          <label>Ports <span style="font-weight:400;color:var(--text3)">— optional</span></label>
+          <div id="d-port-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+          <button type="button" class="btn-secondary" style="width:fit-content;font-size:12px;padding:5px 12px" id="add-port-entry">+ Add port</button>
+          <span class="hint" style="margin-top:6px;display:block">
+            For internal connections write e.g. <code>A2 (A1)</code> — means A2 is internally wired to A1 (bidirectional).
+            Multiple: <code>B (A, C)</code>.
+          </span>
+        </div>
+      </div>
+      <div class="submit-row">
+        <button class="btn-primary" id="submit-device">Add device</button>
+        <button class="btn-secondary" id="clear-device">Clear</button>
+        <span id="flash-device"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add setup -->
+  <div id="tab-add-setup" style="display:none">
+    <div class="card">
+      <div style="font-size:13px;font-weight:500;margin-bottom:16px">New setup entry</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Name *</label>
+          <input type="text" id="s-name" placeholder="e.g. Qubit Characterization A">
+        </div>
+        <div class="field">
+          <label>Description</label>
+          <input type="text" id="s-desc" placeholder="optional">
+        </div>
+      </div>
+      <div class="submit-row">
+        <button class="btn-primary" id="submit-setup">Add setup</button>
+        <button class="btn-secondary" id="clear-setup">Clear</button>
+        <span id="flash-setup"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- All devices -->
+  <div id="tab-all-devices" style="display:none">
+    <div class="card" style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Name</th><th>Description</th><th>Ports</th><th></th></tr></thead>
+        <tbody id="all-devices-tbody"></tbody>
+      </table>
+      <div style="padding-top:8px"><span class="flash" id="flash-devices"></span></div>
+    </div>
+  </div>
+
+  <!-- All setups -->
+  <div id="tab-all-setups" style="display:none">
+    <div class="card" style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Name</th><th>Description</th><th></th></tr></thead>
+        <tbody id="all-setups-tbody"></tbody>
+      </table>
+      <div style="padding-top:8px"><span class="flash" id="flash-setups"></span></div>
+    </div>
+  </div>
+
+</div><!-- .container -->
+
+<div id="toasts"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
