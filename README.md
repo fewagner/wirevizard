@@ -2,7 +2,7 @@
 
 A lightweight browser tool for documenting physical cabling in a lab setup.
 
-**Live app:** <https://fewagner.github.io/wirevizard/> · **Demo (no setup needed):** <https://fewagner.github.io/wirevizard/?demo=1>
+**Live app:** <https://fewagner.com/wirevizard/> · **Demo (no setup needed):** <https://fewagner.com/wirevizard/?demo=1>
 
 This repository contains only the app — generic static HTML/CSS/JS with no build step and **no data**. The cabling data lives in a separate, private GitHub repository ([`wirevizard-data`](https://github.com/fewagner/wirevizard-data)) holding three plain CSV files. The app talks directly to the GitHub API from the browser; there is no backend.
 
