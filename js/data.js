@@ -317,6 +317,13 @@ export function validate(cables, devices, setups) {
 
 // ---------- signal paths ----------
 
+// Returns an array of path objects:
+//   { steps, incompleteStart: {dev, port}|null, incompleteEnd: {dev, port}|null }
+// A path is complete when both markers are null: it runs from one terminal
+// port (cable-connected, no internal connections) to another. Chains that
+// dead-end mid-way — e.g. because a link is missing from the data or a cable
+// isn't assigned to the setup — are still returned, marked incomplete, so one
+// gap never silently hides the whole chain. Complete paths sort first.
 export function computeSignalPaths(cables, devices) {
   // internalMap: deviceName -> {portName -> [connectedPortName, ...]}
   const internalMap = {};
@@ -343,40 +350,36 @@ export function computeSignalPaths(cables, devices) {
     if (!hasInternal) terminalPorts.push({ dev, port });
   }
 
-  const allPaths = [];
-  const visitedPairs = new Set();
-  const canonicalKey = (a, b) => {
-    const ka = adjKey(a.dev, a.port), kb = adjKey(b.dev, b.port);
-    return ka <= kb ? ka + '||' + kb : kb + '||' + ka;
-  };
-
-  for (const start of terminalPorts) {
+  // BFS from one port outward through cables and internal connections.
+  // Returns every maximal branch: { steps, end, endTerminal }.
+  function walk(start) {
+    const found = [];
     const queue = [{ dev: start.dev, port: start.port, steps: [], visited: new Set([adjKey(start.dev, start.port)]) }];
     while (queue.length) {
       const { dev, port, steps, visited } = queue.shift();
-      for (const hop of cableAdj[adjKey(dev, port)] || []) {
-        const destKey = adjKey(hop.dev, hop.port);
-        if (visited.has(destKey)) continue;
+      const hops = (cableAdj[adjKey(dev, port)] || []).filter(h => !visited.has(adjKey(h.dev, h.port)));
+      if (!hops.length) {
+        // arrived here via an internal connection and there is no cable onward
+        if (steps.length) found.push({ steps, end: { dev, port }, endTerminal: false });
+        continue;
+      }
+      for (const hop of hops) {
         const newVisited = new Set(visited);
-        newVisited.add(destKey);
+        newVisited.add(adjKey(hop.dev, hop.port));
         const newSteps = [...steps, {
           type: 'cable', cable_id: hop.cable_id,
           fromDev: dev, fromPort: port, toDev: hop.dev, toPort: hop.port,
         }];
         const intConns = (internalMap[hop.dev] && internalMap[hop.dev][hop.port]) || [];
+        const conts = intConns.filter(cp => !newVisited.has(adjKey(hop.dev, cp)));
         if (!intConns.length) {
-          // Reached another terminal port — complete path
-          const pk = canonicalKey(start, { dev: hop.dev, port: hop.port });
-          if (!visitedPairs.has(pk)) {
-            visitedPairs.add(pk);
-            allPaths.push(newSteps);
-          }
+          found.push({ steps: newSteps, end: { dev: hop.dev, port: hop.port }, endTerminal: true });
+        } else if (!conts.length) {
+          found.push({ steps: newSteps, end: { dev: hop.dev, port: hop.port }, endTerminal: false });
         } else {
-          for (const connPort of intConns) {
-            const connKey = adjKey(hop.dev, connPort);
-            if (newVisited.has(connKey)) continue;
+          for (const connPort of conts) {
             const v2 = new Set(newVisited);
-            v2.add(connKey);
+            v2.add(adjKey(hop.dev, connPort));
             queue.push({
               dev: hop.dev, port: connPort,
               steps: [...newSteps, { type: 'internal', fromDev: hop.dev, fromPort: hop.port, toDev: hop.dev, toPort: connPort }],
@@ -386,6 +389,71 @@ export function computeSignalPaths(cables, devices) {
         }
       }
     }
+    return found;
   }
-  return allPaths;
+
+  const complete = [];
+  const partial = [];
+  const seenComplete = new Set();
+  const usedCables = new Set();
+  const canonicalKey = (a, b) => {
+    const ka = adjKey(a.dev, a.port), kb = adjKey(b.dev, b.port);
+    return ka <= kb ? ka + '||' + kb : kb + '||' + ka;
+  };
+  const cableIds = steps => steps.filter(s => s.type === 'cable').map(s => s.cable_id);
+  const markUsed = steps => cableIds(steps).forEach(id => usedCables.add(id));
+
+  // 1) chains starting at terminal ports
+  for (const start of terminalPorts) {
+    for (const f of walk(start)) {
+      if (f.endTerminal) {
+        const pk = canonicalKey(start, f.end);
+        if (seenComplete.has(pk)) continue;
+        seenComplete.add(pk);
+        complete.push({ steps: f.steps, incompleteStart: null, incompleteEnd: null });
+      } else {
+        partial.push({ steps: f.steps, incompleteStart: null, incompleteEnd: f.end });
+      }
+      markUsed(f.steps);
+    }
+  }
+
+  // 2) orphan segments with no terminal port anywhere (both ends dead-end
+  //    after internal connections) — start from an unused cable's endpoints
+  //    and keep the longest branch.
+  for (let guard = 0; guard < cables.length; guard++) {
+    const orphan = cables.find(c => c.cable_id && !usedCables.has(c.cable_id));
+    if (!orphan) break;
+    usedCables.add(orphan.cable_id);
+    const cands = [];
+    for (const [dev, port] of [[orphan.from_device, orphan.from_port], [orphan.to_device, orphan.to_port]]) {
+      for (const f of walk({ dev, port })) cands.push({ start: { dev, port }, ...f });
+    }
+    if (!cands.length) continue;
+    cands.sort((a, b) => b.steps.length - a.steps.length);
+    const best = cands[0];
+    partial.push({
+      steps: best.steps,
+      incompleteStart: best.start,
+      incompleteEnd: best.endTerminal ? null : best.end,
+    });
+    markUsed(best.steps);
+  }
+
+  // Drop partial branches that are just sub-chains of a longer path (e.g. the
+  // unused positions of a switch whose selected position continues onward).
+  const asSet = p => new Set(cableIds(p.steps));
+  const isSubset = (a, b) => a.size < b.size && [...a].every(x => b.has(x));
+  const allSets = [...complete, ...partial].map(asSet);
+  const seenPartialKey = new Set();
+  const keptPartials = partial.filter(p => {
+    const s = asSet(p);
+    if (allSets.some(o => isSubset(s, o))) return false;
+    const key = [...s].sort().join('|');       // identical cable sets (e.g. switch
+    if (seenPartialKey.has(key)) return false; // fan-out) collapse to one branch
+    seenPartialKey.add(key);
+    return true;
+  });
+
+  return [...complete, ...keptPartials];
 }

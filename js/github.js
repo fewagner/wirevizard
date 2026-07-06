@@ -30,8 +30,10 @@ export class GitHubClient {
     if (this.token) headers.Authorization = 'Bearer ' + this.token;
     let res;
     try {
+      // GitHub answers with max-age=60; without no-store the browser serves
+      // stale heads for up to a minute, even across page reloads.
       res = await fetch(`https://api.github.com/${path}`, {
-        method, headers,
+        method, headers, cache: 'no-store',
         body: body ? JSON.stringify(body) : undefined,
       });
     } catch {
@@ -92,7 +94,7 @@ export class GitHubClient {
   }
 
   async getRawText(ref, path) {
-    const res = await fetch(this.rawUrl(ref, path));
+    const res = await fetch(this.rawUrl(ref, path), { cache: 'no-store' });
     if (!res.ok) throw new GHError(`Could not fetch ${path} (${res.status}). For private repositories, add a token in Settings.`, 'raw', res.status);
     return res.text();
   }

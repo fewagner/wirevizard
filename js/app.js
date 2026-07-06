@@ -674,15 +674,19 @@ function renderSignalPaths() {
     ? new Set(setupCables.filter(c => (c.tag || '').toLowerCase().includes(tagFilter)).map(c => c.cable_id))
     : null;
   const filtered = tagFilter
-    ? paths.filter(steps => steps.some(s => s.type === 'cable' && taggedIds.has(s.cable_id)))
+    ? paths.filter(p => p.steps.some(s => s.type === 'cable' && taggedIds.has(s.cable_id)))
     : paths;
   if (!filtered.length) {
     el.innerHTML = '<div class="empty">No signal paths found' +
       (tagFilter ? ' matching the tag filter' : '') + '</div>';
     return;
   }
-  el.innerHTML = filtered.map((steps, i) => {
-    const stepsHtml = steps.map(s => {
+  const warnLine = txt =>
+    `<div style="font-size:11px;padding:3px 6px;margin:2px 0;border-radius:5px;` +
+    `background:var(--amber-bg);color:var(--amber-text)">⚠ ${txt}</div>`;
+  el.innerHTML = filtered.map((p, i) => {
+    const incomplete = p.incompleteStart || p.incompleteEnd;
+    const stepsHtml = p.steps.map(s => {
       if (s.type === 'cable') {
         const tag = (cableById[s.cable_id] || {}).tag || '';
         const tagBadge = tag
@@ -698,9 +702,17 @@ function renderSignalPaths() {
           `${esc(s.toDev)} [${esc(s.toPort)}]</div>`;
       }
     }).join('');
-    return `<div class="card" style="margin-bottom:12px">
-      <div style="font-size:11px;font-weight:500;color:var(--text2);margin-bottom:8px">Path ${i + 1}</div>
-      ${stepsHtml}
+    const title = `Path ${i + 1}` + (incomplete
+      ? ' <span style="color:var(--amber-text);font-weight:400">— incomplete</span>' : '');
+    const startWarn = p.incompleteStart
+      ? warnLine(`starts mid-chain at ${esc(p.incompleteStart.dev)} [${esc(p.incompleteStart.port)}] — earlier links are missing from the data or not assigned to this setup`)
+      : '';
+    const endWarn = p.incompleteEnd
+      ? warnLine(`dead end at ${esc(p.incompleteEnd.dev)} [${esc(p.incompleteEnd.port)}] — no onward cable or internal connection in this setup`)
+      : '';
+    return `<div class="card" style="margin-bottom:12px${incomplete ? ';border-color:var(--amber-text)' : ''}">
+      <div style="font-size:11px;font-weight:500;color:var(--text2);margin-bottom:8px">${title}</div>
+      ${startWarn}${stepsHtml}${endWarn}
     </div>`;
   }).join('');
 }

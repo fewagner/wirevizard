@@ -20,5 +20,6 @@ C002,Patch panel A,A2,Downconverter,RF in,Demo setup,drive
 C003,Downconverter,IF out,Digitizer,in 1,Demo setup,readout
 C004,LO source,RF out,Downconverter,LO in,Demo setup,LO
 C005,AWG-1,ch2 out,Fridge line 1,top,Demo setup,flux
+C006,Digitizer,in 2,Patch panel A,A3,Demo setup,spare line — dead-ends at A4
 `,
 };

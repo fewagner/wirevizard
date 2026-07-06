@@ -33,7 +33,7 @@ A port column contains either a plain name (`RF out`) or a name with a parenthes
 
 ## Features
 
-Query by device or setup · signal-path tracing with tag filter · full cable table with live search and inline editing · editable device/port and setup registries with cascading renames and deletes · validation (missing fields, duplicate IDs, unknown references, undefined ports, port-use conflicts) · demo mode (`?demo=1`).
+Query by device or setup · signal-path tracing with tag filter (incomplete chains are shown too, marked with the exact dead-end port) · full cable table with live search and inline editing · editable device/port and setup registries with cascading renames and deletes · validation (missing fields, duplicate IDs, unknown references, undefined ports, port-use conflicts) · demo mode (`?demo=1`).
 
 ## Local development
 
