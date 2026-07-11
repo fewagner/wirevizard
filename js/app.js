@@ -5,6 +5,8 @@
 
 import { store } from './store.js';
 import { initSettings, openSettings } from './settings.js';
+import { initDetails, detailsBtnHtml, wireDetailsButtons } from './details.js';
+import { renderAllDiagram, renderQueryDiagram, isDiagramDragging } from './diagram.js';
 import { toast } from './ui.js';
 import { esc, b64DecodeUtf8, lsGet, lsSet } from './util.js';
 import {
@@ -19,6 +21,8 @@ let selectedDevice = null;
 let selectedSetup = null;
 let selectedSignalSetup = null;
 let currentTab = 'query';
+let allView = 'table';     // "All cables" sub-tab: table | diagram
+let queryView = 'table';   // "Query device" sub-tab: table | diagram
 
 const CABLES = () => store.cables;
 const DEVICES = () => store.devices.map(deviceView);
@@ -89,9 +93,12 @@ function renderTab(t) {
 }
 
 // Re-render everything visible after data changed — but never yank the DOM out
-// from under an in-progress inline edit.
+// from under an in-progress inline edit, drag, or half-filled diagram form.
 function renderCurrent() {
+  if (isDiagramDragging()) return;
   if (document.querySelector('.container input.inline-input, .container td.editable input')) return;
+  const act = document.activeElement;
+  if (act && act.closest && act.closest('.dg-form')) return;
   renderTab(currentTab);
 }
 
@@ -176,8 +183,16 @@ function renderDeviceChips() {
 
 function renderDeviceQuery() {
   const el = document.getElementById('query-result');
+  const dg = document.getElementById('query-diagram');
+  el.style.display = queryView === 'table' ? '' : 'none';
+  dg.style.display = queryView === 'diagram' ? '' : 'none';
   if (!selectedDevice) {
     el.innerHTML = '<div class="empty">Select a device above to see its cables</div>';
+    dg.innerHTML = '<div class="empty">Select a device above to see its diagram</div>';
+    return;
+  }
+  if (queryView === 'diagram') {
+    renderQueryDiagram(dg, selectedDevice);
     return;
   }
   const matches = CABLES().filter(c => c.from_device === selectedDevice || c.to_device === selectedDevice);
@@ -252,6 +267,13 @@ function renderSetupQuery() {
 // ── All cables ─────────────────────────────────────────────────────────────────
 
 function renderAll() {
+  document.getElementById('all-table').style.display = allView === 'table' ? '' : 'none';
+  document.getElementById('all-diagram').style.display = allView === 'diagram' ? '' : 'none';
+  if (allView === 'diagram') {
+    renderAllDiagram(document.getElementById('all-diagram'));
+    return;
+  }
+
   // Don't re-render while a cell edit is in progress
   if (document.querySelector('#all-tbody input')) return;
 
@@ -272,7 +294,8 @@ function renderAll() {
       ${editCell(c.cable_id, 'to_port', c.to_port, true)}
       ${editCell(c.cable_id, 'setup', c.setup, false)}
       ${editCell(c.cable_id, 'tag', c.tag, false)}
-      <td style="width:32px;padding:4px 6px">
+      <td style="width:64px;padding:4px 6px;white-space:nowrap">
+        ${detailsBtnHtml('cable', c.cable_id, c.comment)}
         <button class="del-btn" data-cable-id="${esc(c.cable_id)}" title="Delete cable">×</button>
       </td>
     </tr>`
@@ -375,9 +398,13 @@ function renderValidate() {
 
 // ── Add cable ──────────────────────────────────────────────────────────────────
 
-function rebuildPortInput(side) {
+// The form keeps its values across tab switches and after adding a cable, so
+// checking another tab mid-entry (or adding several similar cables) never
+// means starting over. Rebuilds preserve the current selection when possible.
+function rebuildPortInput(side, keepValue = true) {
   const devSel = document.getElementById(`f-${side}-dev`);
   const wrap = document.getElementById(`f-${side}-port-wrap`);
+  const prev = keepValue ? (document.getElementById(`f-${side}-port`)?.value ?? '') : '';
   const devName = devSel ? devSel.value : '';
   const device = DEVICES().find(d => d.name === devName);
   wrap.innerHTML = '';
@@ -389,27 +416,36 @@ function rebuildPortInput(side) {
       opt.value = p; opt.textContent = p;
       sel.appendChild(opt);
     });
+    if (device.ports.includes(prev)) sel.value = prev;
     wrap.appendChild(sel);
   } else {
     const inp = document.createElement('input');
     inp.type = 'text';
     inp.id = `f-${side}-port`;
     inp.placeholder = side === 'from' ? 'e.g. 1 out, eth0' : 'e.g. A2, port-06';
+    inp.value = prev;
     wrap.appendChild(inp);
   }
 }
 
 function initCableForm() {
+  const keep = sel => {
+    const el = document.getElementById(sel);
+    const prev = el.value;
+    return () => { if ([...el.options].some(o => o.value === prev)) el.value = prev; };
+  };
+  const restoreFrom = keep('f-from-dev'), restoreTo = keep('f-to-dev'), restoreSetup = keep('f-setup');
   const devOpts = DEVICES().map(d => `<option value="${esc(d.name)}">${esc(d.name)}</option>`).join('');
   document.getElementById('f-from-dev').innerHTML = devOpts;
   document.getElementById('f-to-dev').innerHTML = devOpts;
   document.getElementById('f-setup').innerHTML =
     `<option value=""></option>` +
     SETUPS().map(s => `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('');
+  restoreFrom(); restoreTo(); restoreSetup();
   rebuildPortInput('from');
   rebuildPortInput('to');
   const f = document.getElementById('f-id');
-  if (!f.value) f.placeholder = nextCableId(CABLES());
+  f.placeholder = nextCableId(CABLES());
 }
 
 function clearCableForm() {
@@ -431,7 +467,13 @@ function submitCable() {
     to_device: get('f-to-dev'), to_port: get('f-to-port'),
     setup: get('f-setup'), tag: get('f-tag'),
   }), 'flash');
-  if (r.ok) { flash(`✓ Cable ${r.value} added — press Save to commit.`, true); clearCableForm(); }
+  if (r.ok) {
+    flash(`✓ Cable ${r.value} added — press Save to commit.`, true);
+    // keep all field values for the next (likely similar) cable; only clear a
+    // manually-typed id, which would now collide
+    document.getElementById('f-id').value = '';
+    document.getElementById('f-id').placeholder = nextCableId(CABLES());
+  }
 }
 
 // ── Add device ─────────────────────────────────────────────────────────────────
@@ -514,7 +556,7 @@ function renderAllDevices() {
         <td class="editable" data-dtype="device-name" data-device="${esc(d.name)}">${esc(d.name)}</td>
         <td class="editable" data-dtype="device-desc" data-device="${esc(d.name)}">${esc(d.description || '')}</td>
         <td>${portBadges}<button class="icon-btn add-port" data-action="add-port" data-device="${esc(d.name)}" title="Add port">＋ port</button></td>
-        <td><button class="btn-sm danger" data-action="delete-device" data-device="${esc(d.name)}">Delete</button></td>
+        <td style="white-space:nowrap">${detailsBtnHtml('device', d.name, d.comment)}<button class="btn-sm danger" data-action="delete-device" data-device="${esc(d.name)}">Delete</button></td>
       </tr>`;
     }).join('') || '<tr><td colspan="4" class="empty">No devices yet</td></tr>';
 }
@@ -722,10 +764,38 @@ function renderSignalPaths() {
 function boot() {
   importSetupHash();
   initSettings();
+  initDetails();
 
   document.getElementById('tabs').addEventListener('click', e => {
     const b = e.target.closest('.tab');
     if (b) setTab(b.dataset.tab);
+  });
+
+  // sub-tabs (table | diagram)
+  document.getElementById('all-subtabs').addEventListener('click', e => {
+    const b = e.target.closest('.subtab');
+    if (!b) return;
+    allView = b.dataset.view;
+    document.querySelectorAll('#all-subtabs .subtab').forEach(s => s.classList.toggle('active', s === b));
+    renderAll();
+  });
+  document.getElementById('query-subtabs').addEventListener('click', e => {
+    const b = e.target.closest('.subtab');
+    if (!b) return;
+    queryView = b.dataset.view;
+    document.querySelectorAll('#query-subtabs .subtab').forEach(s => s.classList.toggle('active', s === b));
+    renderDeviceQuery();
+  });
+
+  // comment buttons in tables; clicking a far-end box in the query diagram
+  // jumps to that device
+  for (const id of ['all-tbody', 'all-devices-tbody']) {
+    wireDetailsButtons(document.getElementById(id));
+  }
+  document.getElementById('query-diagram').addEventListener('jump-device', e => {
+    selectedDevice = e.detail;
+    renderDeviceChips();
+    renderDeviceQuery();
   });
 
   document.getElementById('device-chips').addEventListener('click', e => {
@@ -788,8 +858,9 @@ function boot() {
 
   document.getElementById('submit-cable').addEventListener('click', submitCable);
   document.getElementById('clear-cable').addEventListener('click', clearCableForm);
-  document.getElementById('f-from-dev').addEventListener('change', () => rebuildPortInput('from'));
-  document.getElementById('f-to-dev').addEventListener('change', () => rebuildPortInput('to'));
+  // switching device on purpose resets the port choice (ports are per-device)
+  document.getElementById('f-from-dev').addEventListener('change', () => rebuildPortInput('from', false));
+  document.getElementById('f-to-dev').addEventListener('change', () => rebuildPortInput('to', false));
   document.getElementById('add-port-entry').addEventListener('click', () => addPortEntry());
   document.getElementById('submit-device').addEventListener('click', submitDevice);
   document.getElementById('clear-device').addEventListener('click', clearDeviceForm);

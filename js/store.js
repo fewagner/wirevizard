@@ -14,11 +14,11 @@
 import { GitHubClient, GHError } from './github.js';
 import { DEMO_FILES } from './demo.js';
 import {
-  CABLES_PATH, DEVICES_PATH, SETUPS_PATH, DATA_PATHS,
+  CABLES_PATH, DEVICES_PATH, SETUPS_PATH, DATA_PATHS, IMAGE_DIR,
   parseCables, serializeCables, parseDevices, serializeDevices,
   parseSetups, serializeSetups,
 } from './data.js';
-import { lsGet, lsSet, lsDel, clone, debounce } from './util.js';
+import { lsGet, lsSet, lsDel, clone, debounce, slugify, uid } from './util.js';
 
 const SETTINGS_KEY = 'wv:settings';
 
@@ -36,12 +36,12 @@ function parseFiles(sha, files) {
 const COLLECTIONS = [
   {
     name: 'cables', path: CABLES_PATH, key: c => c.cable_id,
-    fields: ['from_device', 'from_port', 'to_device', 'to_port', 'setup', 'tag'],
+    fields: ['from_device', 'from_port', 'to_device', 'to_port', 'setup', 'tag', 'comment'],
     serialize: serializeCables,
   },
   {
     name: 'devices', path: DEVICES_PATH, key: d => d.name,
-    fields: ['description', 'port_strings'],
+    fields: ['description', 'x', 'y', 'comment', 'port_strings'],
     serialize: serializeDevices,
   },
   {
@@ -60,6 +60,8 @@ export const store = {
   cables: [],
   devices: [],
   setups: [],
+  pendingImages: {},   // repo path -> data URL, committed on save
+  _imgUrlCache: new Map(),
   demo: false,
   syncing: false,
   saving: false,
@@ -134,6 +136,7 @@ export const store = {
       this.cables = draft.cables;
       this.devices = draft.devices || [];
       this.setups = draft.setups || [];
+      this.pendingImages = draft.pendingImages || {};
       this._draftBaseSha = draft.baseSha ?? null;
       this._fork = draft.fork || this._snapshot(this.base);
       this._hasDraft = true;
@@ -157,6 +160,7 @@ export const store = {
     this.cables = clone(this.base.cables);
     this.devices = clone(this.base.devices);
     this.setups = clone(this.base.setups);
+    this.pendingImages = {};
     this._hasDraft = false;
     this._draftBaseSha = this.base.sha;
     this._fork = null;
@@ -172,6 +176,7 @@ export const store = {
       cables: this.cables,
       devices: this.devices,
       setups: this.setups,
+      pendingImages: this.pendingImages,
       fork: this._fork,
       ts: Date.now(),
     });
@@ -195,6 +200,38 @@ export const store = {
     return result;
   },
 
+  // ----- images -----
+
+  // Register an image (data URL) for commit on the next save; returns its
+  // repo path for linking in comments.
+  addImage(name, dataUrl) {
+    const dot = name.lastIndexOf('.');
+    const ext = dot > 0 ? name.slice(dot + 1).toLowerCase().replace(/[^a-z0-9]/g, '') : 'png';
+    const path = `${IMAGE_DIR}${slugify(dot > 0 ? name.slice(0, dot) : name) || 'img'}-${uid().slice(0, 4)}.${ext}`;
+    this.pendingImages[path] = dataUrl;
+    this.touch();
+    return path;
+  },
+
+  // Resolve an image path from a comment to something an <img> can display.
+  // Pending uploads render from their data URL; committed images in the
+  // (private) data repo are fetched through the authenticated contents API.
+  async imageUrl(path) {
+    if (/^(https?:|data:|blob:)/i.test(path)) return path;
+    const p = path.replace(/^\.\//, '');
+    if (this.pendingImages[p]) return this.pendingImages[p];
+    if (this.demo || !this.configured()) return null;
+    const key = `${this.repoKey()}:${p}`;
+    if (!this._imgUrlCache.has(key)) {
+      try {
+        this._imgUrlCache.set(key, await this.client().getFileBlobUrl(p));
+      } catch {
+        return null;
+      }
+    }
+    return this._imgUrlCache.get(key);
+  },
+
   // ----- diff -----
 
   // List of file-level changes between working copy and base.
@@ -209,6 +246,9 @@ export const store = {
       } else if (col.serialize(this.base[col.name]) !== text) {
         list.push({ path: col.path, text });
       }
+    }
+    for (const [path, dataUrl] of Object.entries(this.pendingImages)) {
+      list.push({ path, base64: String(dataUrl).split(',')[1] || '' });
     }
     return list;
   },
@@ -233,6 +273,8 @@ export const store = {
       if (del) bits.push(`-${del}`);
       if (bits.length) parts.push(`${col.name} ${bits.join(' ')}`);
     }
+    const nImg = Object.keys(this.pendingImages).length;
+    if (nImg) parts.push(`images +${nImg}`);
     return `wirevizard: ${parts.join(', ') || 'update'}`;
   },
 
@@ -379,6 +421,7 @@ export const store = {
       this.cables = draft.cables;
       this.devices = draft.devices || [];
       this.setups = draft.setups || [];
+      this.pendingImages = draft.pendingImages || {};
       this._draftBaseSha = draft.baseSha ?? null;
       this._fork = draft.fork || this._snapshot(this.base);
       this._hasDraft = true;
@@ -431,9 +474,10 @@ export const store = {
       const files = { ...this.base.files };
       for (const c of changes) {
         if (c.delete) delete files[c.path];
-        else files[c.path] = { sha: 'local:' + res.sha, text: c.text };
+        else if (c.text != null) files[c.path] = { sha: 'local:' + res.sha, text: c.text };
       }
       this.base = parseFiles(res.sha, files);
+      this.pendingImages = {};
       this._hasDraft = false;
       this._draftBaseSha = res.sha;
       this._fork = null;

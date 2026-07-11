@@ -40,7 +40,12 @@
   <!-- Query device -->
   <div id="tab-query">
     <div class="chip-row" id="device-chips"></div>
+    <div class="subtabs" id="query-subtabs">
+      <button class="subtab active" data-view="table">Table</button>
+      <button class="subtab" data-view="diagram">Diagram</button>
+    </div>
     <div id="query-result"><div class="empty">Select a device above to see its cables</div></div>
+    <div id="query-diagram" style="display:none"></div>
   </div>
 
   <!-- Query setup -->
@@ -61,20 +66,27 @@
 
   <!-- All cables -->
   <div id="tab-all" style="display:none">
-    <div class="stat-row" id="stats"></div>
-    <input type="text" id="search" placeholder="Filter by device, cable ID, setup, tag…">
-    <div class="card" style="overflow-x:auto">
-      <table>
-        <thead><tr>
-          <th>ID</th><th>From device</th><th>Port</th>
-          <th>To device</th><th>Port</th><th>Setup</th><th>Tag</th><th></th>
-        </tr></thead>
-        <tbody id="all-tbody"></tbody>
-      </table>
+    <div class="subtabs" id="all-subtabs">
+      <button class="subtab active" data-view="table">Table</button>
+      <button class="subtab" data-view="diagram">Diagram</button>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin-top:-8px">
-      Double-click any cell to edit it in place.
+    <div id="all-table">
+      <div class="stat-row" id="stats"></div>
+      <input type="text" id="search" placeholder="Filter by device, cable ID, setup, tag…">
+      <div class="card" style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>ID</th><th>From device</th><th>Port</th>
+            <th>To device</th><th>Port</th><th>Setup</th><th>Tag</th><th></th>
+          </tr></thead>
+          <tbody id="all-tbody"></tbody>
+        </table>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:-8px">
+        Double-click any cell to edit it in place.
+      </div>
     </div>
+    <div id="all-diagram" style="display:none"></div>
   </div>
 
   <!-- Validate -->

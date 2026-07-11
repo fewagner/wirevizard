@@ -6,13 +6,17 @@
 
 import { csvToObjects, objectsToCsv, parseCsv, serializeCsv } from './util.js';
 
-export const CABLE_FIELDS = ['cable_id', 'from_device', 'from_port', 'to_device', 'to_port', 'setup', 'tag'];
+export const CABLE_FIELDS = ['cable_id', 'from_device', 'from_port', 'to_device', 'to_port', 'setup', 'tag', 'comment'];
 export const SETUP_FIELDS = ['name', 'description'];
+// devices.csv fixed columns before the port columns (header-driven; files
+// written before x/y/comment existed parse fine and are migrated on save)
+export const DEVICE_FIXED = ['name', 'description', 'x', 'y', 'comment'];
 
 export const CABLES_PATH = 'cables.csv';
 export const DEVICES_PATH = 'devices.csv';
 export const SETUPS_PATH = 'setups.csv';
 export const DATA_PATHS = [CABLES_PATH, DEVICES_PATH, SETUPS_PATH];
+export const IMAGE_DIR = 'images/';
 
 // ---------- ports ----------
 
@@ -42,7 +46,11 @@ export function deviceView(d) {
       (connections[cp] ||= []).includes(name) || connections[cp].push(name);
     }
   }
-  return { name: d.name, description: d.description, ports, connections, port_strings: d.port_strings || [] };
+  return {
+    name: d.name, description: d.description,
+    x: d.x || '', y: d.y || '', comment: d.comment || '',
+    ports, connections, port_strings: d.port_strings || [],
+  };
 }
 
 // ---------- (de)serialization ----------
@@ -52,13 +60,19 @@ export function serializeCables(cables) { return objectsToCsv(cables, CABLE_FIEL
 
 export function parseDevices(text) {
   const rows = parseCsv(text);
+  const header = rows[0] || [];
+  // legacy files have ports from column 2; new files have x,y,comment first
+  const portsFrom = header[2] === 'x' ? DEVICE_FIXED.length : 2;
   const devices = [];
   for (const row of rows.slice(1)) {
     if (!row.length || row.every(c => !c.trim())) continue;
     devices.push({
       name: (row[0] || '').trim(),
       description: (row[1] || '').trim(),
-      port_strings: row.slice(2).map(c => c.trim()).filter(Boolean),
+      x: portsFrom > 2 ? (row[2] || '').trim() : '',
+      y: portsFrom > 2 ? (row[3] || '').trim() : '',
+      comment: portsFrom > 2 ? (row[4] || '') : '',
+      port_strings: row.slice(portsFrom).map(c => c.trim()).filter(Boolean),
     });
   }
   return devices;
@@ -66,8 +80,8 @@ export function parseDevices(text) {
 
 export function serializeDevices(devices) {
   return serializeCsv([
-    ['name', 'description'],
-    ...devices.map(d => [d.name, d.description || '', ...(d.port_strings || [])]),
+    DEVICE_FIXED,
+    ...devices.map(d => [d.name, d.description || '', d.x || '', d.y || '', d.comment || '', ...(d.port_strings || [])]),
   ]);
 }
 
@@ -177,6 +191,25 @@ export function updateDeviceDescription(state, name, description) {
   const device = findDevice(state, name);
   if (!device) throw new Error(`Device '${name}' not found`);
   device.description = description;
+}
+
+export function setDevicePosition(state, name, x, y) {
+  const device = findDevice(state, name);
+  if (!device) throw new Error(`Device '${name}' not found`);
+  device.x = String(Math.round(x));
+  device.y = String(Math.round(y));
+}
+
+export function setDeviceComment(state, name, comment) {
+  const device = findDevice(state, name);
+  if (!device) throw new Error(`Device '${name}' not found`);
+  device.comment = comment;
+}
+
+export function setCableComment(state, cableId, comment) {
+  const cable = state.cables.find(c => c.cable_id === cableId);
+  if (!cable) throw new Error(`Cable '${cableId}' not found`);
+  cable.comment = comment;
 }
 
 export function updatePort(state, deviceName, oldPort, newPortString) {

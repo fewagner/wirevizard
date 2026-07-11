@@ -99,13 +99,27 @@ export class GitHubClient {
     return res.text();
   }
 
-  // changes: [{path, text} | {path, delete: true}]
+  // Authenticated fetch of a (possibly binary) file as an object URL — <img>
+  // can't send an Authorization header, so raw URLs fail on private repos.
+  async getFileBlobUrl(path) {
+    const r = await this.req(`${this.base()}/contents/${encPath(path)}?ref=${encodeURIComponent(this.branch)}`);
+    const bin = atob((r.content || '').replace(/\n/g, ''));
+    const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+    return URL.createObjectURL(new Blob([bytes]));
+  }
+
+  // changes: [{path, text} | {path, base64} | {path, delete: true}]
   // parent: {sha, treeSha} or null for an empty repo (bootstraps the branch).
   async commitFiles({ message, parent, changes }) {
     const tree = [];
     for (const ch of changes) {
       if (ch.delete) {
         if (parent) tree.push({ path: ch.path, mode: '100644', type: 'blob', sha: null });
+      } else if (ch.base64 != null) {
+        const blob = await this.req(`${this.base()}/git/blobs`, {
+          method: 'POST', body: { content: ch.base64, encoding: 'base64' },
+        });
+        tree.push({ path: ch.path, mode: '100644', type: 'blob', sha: blob.sha });
       } else {
         tree.push({ path: ch.path, mode: '100644', type: 'blob', content: ch.text });
       }

@@ -25,15 +25,16 @@ This repository contains only the app — generic static HTML/CSS/JS with no bui
 
 | File | Purpose |
 |---|---|
-| `cables.csv` | One row per physical cable: `cable_id, from_device, from_port, to_device, to_port, setup, tag` |
-| `devices.csv` | Registry of devices; first two columns `name, description`, every further column one port |
+| `cables.csv` | One row per physical cable: `cable_id, from_device, from_port, to_device, to_port, setup, tag, comment` |
+| `devices.csv` | Registry of devices; fixed columns `name, description, x, y, comment`, every further column one port |
 | `setups.csv` | Registry of measurement setups: `name, description` |
+| `images/` | Images attached to comments, uploaded through the app |
 
-A port column contains either a plain name (`RF out`) or a name with a parenthesised list of internally-connected ports (`A2 (A1)`, bidirectional). The Signal-paths tab traces end-to-end signal chains through cables and these internal connections.
+A port column contains either a plain name (`RF out`) or a name with a parenthesised list of internally-connected ports (`A2 (A1)`, bidirectional). The Signal-paths tab traces end-to-end signal chains through cables and these internal connections. `x`/`y` are the device's position on the cabling diagram; `comment` is free-text Markdown that may link images (`![label](images/…)`). Files written before these columns existed parse fine and are migrated on the next save.
 
 ## Features
 
-Query by device or setup · signal-path tracing with tag filter (incomplete chains are shown too, marked with the exact dead-end port) · full cable table with live search and inline editing · editable device/port and setup registries with cascading renames and deletes · validation (missing fields, duplicate IDs, unknown references, undefined ports, port-use conflicts) · demo mode (`?demo=1`).
+Query by device or setup, as a table or as a **diagram** (the queried device with all ports and labeled far ends, plus inline add-cable/add-port forms) · signal-path tracing with tag filter (incomplete chains are shown too, marked with the exact dead-end port) · full cable table with live search and inline editing, or a **cabling diagram** with draggable device boxes (positions persist in `devices.csv`) and orthogonally-routed cables · free-text comments with attached images on every device and cable (💬 in the tables, click any box/line in the diagrams) · editable device/port and setup registries with cascading renames and deletes · validation · demo mode (`?demo=1`).
 
 ## Local development
 

@@ -9,6 +9,12 @@ export const debounce = (fn, ms) => {
   return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 };
 
+export const uid = () => Math.random().toString(36).slice(2, 8);
+
+export const slugify = s => String(s || '').toLowerCase().normalize('NFKD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+
 export const clone = o => JSON.parse(JSON.stringify(o));
 
 export const lsGet = k => {
@@ -89,4 +95,78 @@ export function csvToObjects(text, fields) {
 
 export function objectsToCsv(objects, fields) {
   return serializeCsv([fields, ...objects.map(o => fields.map(f => o[f] ?? ''))]);
+}
+
+// ---------- Markdown subset renderer (escape first, then transform) ----------
+// Used for the free-text comments on devices and cables. Placeholders use
+// private-use characters U+E000/U+E001 so user text can't forge them.
+
+export function renderMarkdown(md, resolveImg = s => s) {
+  if (!md || !String(md).trim()) return '';
+  let text = esc(String(md).replace(/\r\n/g, '\n'));
+  const slots = [];
+  const put = html => { slots.push(html); return `\uE000${slots.length - 1}\uE001`; };
+
+  text = text.replace(/^```[^\n]*\n([\s\S]*?)^```[ \t]*$/gm, (_, code) => put(`<pre><code>${code}</code></pre>`));
+
+  const inline = s => {
+    s = s.replace(/`([^`\n]+)`/g, (_, c) => put(`<code>${c}</code>`));
+    s = s.replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (_, alt, src) => {
+      const raw = src.replace(/&amp;/g, '&');
+      return put(`<img src="${esc(resolveImg(raw))}" alt="${alt}" loading="lazy" data-src="${esc(raw)}">`);
+    });
+    s = s.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_, t, href) => {
+      const raw = href.replace(/&amp;/g, '&');
+      const safe = /^(https?:|mailto:)/i.test(raw) ? raw : '#';
+      return put(`<a href="${esc(safe)}" target="_blank" rel="noopener">${t}</a>`);
+    });
+    s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/g, '$1<em>$2</em>');
+    return s;
+  };
+
+  const lines = text.split('\n');
+  const out = [];
+  const para = [];
+  const flushPara = () => {
+    if (para.length) out.push(`<p>${para.map(inline).join('<br>')}</p>`);
+    para.length = 0;
+  };
+  let i = 0;
+  while (i < lines.length) {
+    const t = lines[i].trim();
+    if (!t) { flushPara(); i++; continue; }
+    if (/^\uE000\d+\uE001$/.test(t)) { flushPara(); out.push(t); i++; continue; }
+    let m;
+    if ((m = t.match(/^(#{1,6})\s+(.*)$/))) {
+      flushPara();
+      out.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`);
+      i++; continue;
+    }
+    if (/^[-*]\s+/.test(t)) {
+      flushPara();
+      const items = [];
+      while (i < lines.length && /^[-*]\s+/.test(lines[i].trim())) {
+        items.push(`<li>${inline(lines[i].trim().replace(/^[-*]\s+/, ''))}</li>`); i++;
+      }
+      out.push(`<ul>${items.join('')}</ul>`); continue;
+    }
+    if (/^\d+[.)]\s+/.test(t)) {
+      flushPara();
+      const items = [];
+      while (i < lines.length && /^\d+[.)]\s+/.test(lines[i].trim())) {
+        items.push(`<li>${inline(lines[i].trim().replace(/^\d+[.)]\s+/, ''))}</li>`); i++;
+      }
+      out.push(`<ol>${items.join('')}</ol>`); continue;
+    }
+    para.push(t); i++;
+  }
+  flushPara();
+
+  let html = out.join('\n');
+  let guard = 0;
+  while (/\uE000/.test(html) && guard++ < 10) {
+    html = html.replace(/\uE000(\d+)\uE001/g, (_, n) => slots[+n] ?? '');
+  }
+  return html;
 }

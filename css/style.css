@@ -230,6 +230,57 @@ code { font-family: monospace; font-size: 11px; }
 .toast-err { background: var(--red-text);   color: #fff; }
 .toast-out { opacity: 0; }
 
+/* Sub-tabs (table | diagram) */
+.subtabs { display: inline-flex; gap: 0; margin-bottom: 14px; border: 0.5px solid var(--border2);
+           border-radius: 8px; overflow: hidden; }
+.subtab { padding: 5px 16px; border: none; background: transparent; color: var(--text2);
+          font-size: 12px; cursor: pointer; }
+.subtab + .subtab { border-left: 0.5px solid var(--border2); }
+.subtab.active { background: var(--blue-bg); color: var(--blue-text); font-weight: 500; }
+
+/* Diagrams */
+.dg-svg { display: block; font-family: system-ui, -apple-system, sans-serif; }
+.dg-rect { fill: var(--bg); stroke: var(--border2); stroke-width: 1; }
+.dg-titlebg { fill: var(--blue-bg); }
+.dg-title { font-size: 12px; font-weight: 600; fill: var(--blue-text); }
+.dg-port { font-size: 11px; fill: var(--text); font-family: ui-monospace, monospace; }
+.dg-dot { fill: var(--text3); }
+.dg-badge { font-size: 10px; fill: var(--text3); }
+.dg-box { cursor: grab; }
+.dg-box:active { cursor: grabbing; }
+.dg-clickable { cursor: pointer; }
+.dg-cable-line { fill: none; stroke: var(--accent); stroke-width: 1.5; opacity: 0.75; }
+.dg-cable-hit { fill: none; stroke: transparent; stroke-width: 11; cursor: pointer; }
+.dg-cable:hover .dg-cable-line { stroke-width: 3; opacity: 1; }
+.dg-cable-label { font-size: 10px; fill: var(--text2); font-family: ui-monospace, monospace;
+                  paint-order: stroke; stroke: var(--bg2); stroke-width: 3; cursor: pointer; }
+.dg-endrect { fill: var(--bg2); stroke: var(--border); }
+.dg-end:hover .dg-endrect { stroke: var(--accent); }
+.dg-form { margin: 10px 0; }
+.dg-form summary { cursor: pointer; font-size: 12px; color: var(--accent); padding: 4px 0; }
+.dg-form-grid { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; padding: 8px 0; }
+.dg-form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 11px;
+                      font-weight: 500; color: var(--text2); }
+.dg-form-grid input, .dg-form-grid select { padding: 5px 9px; border-radius: 6px;
+  border: 0.5px solid var(--border2); background: var(--bg); color: var(--text);
+  font-size: 12px; outline: none; margin: 0; min-width: 130px; }
+
+/* Details popup (comments + images) */
+.dt-open.has-comment { background: var(--blue-bg); }
+.modal.details textarea { width: 100%; padding: 8px 10px; border-radius: var(--radius);
+  border: 0.5px solid var(--border2); background: var(--bg); color: var(--text);
+  font-size: 13px; font-family: inherit; resize: vertical; outline: none; }
+.modal.details textarea:focus { border-color: var(--accent); }
+.md-preview { margin-top: 10px; font-size: 13px; line-height: 1.5; }
+.md-preview:empty { display: none; }
+.md-preview img { max-width: 100%; border-radius: 8px; border: 0.5px solid var(--border);
+                  display: block; margin: 8px 0; }
+.md-preview p { margin: 6px 0; }
+.md-preview ul, .md-preview ol { margin: 6px 0 6px 20px; }
+.md-preview pre { background: var(--bg2); padding: 8px 10px; border-radius: 6px;
+                  overflow-x: auto; margin: 6px 0; }
+.md-preview h1, .md-preview h2, .md-preview h3 { font-size: 14px; margin: 10px 0 4px; }
+
 @media (max-width: 600px) {
   .stat-row { grid-template-columns: repeat(2, 1fr); }
   .field-grid { grid-template-columns: 1fr; }
