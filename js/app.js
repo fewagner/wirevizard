@@ -792,13 +792,16 @@ function renderWiringSetupChips() {
       : '<span style="color:var(--text3);font-size:12px">No setups defined yet — use "+ Add setup".</span>';
 }
 
-function wiringCellText(cell) {
+// One line per device stay: the device name (unless it equals the column
+// header) plus the entry ⇢ exit ports — so the path reads from the table.
+function wiringCellHtml(cell, colLabel) {
   return cell.visits.map(v => {
-    if (!v.inPort) return esc(v.outPort);   // the chip anchor
-    return v.outPort && v.outPort !== v.inPort
+    const ports = v.outPort && v.outPort !== v.inPort
       ? `${esc(v.inPort)} ⇢ ${esc(v.outPort)}`
-      : esc(v.inPort);
-  }).join(' · ');
+      : esc(v.inPort || v.outPort);
+    const dev = v.dev !== colLabel ? `<span class="wt-vdev">${esc(v.dev)}</span> ` : '';
+    return `<div class="wt-visit">${dev}<code>${ports}</code></div>`;
+  }).join('');
 }
 
 function renderWiring() {
@@ -821,6 +824,7 @@ function renderWiring() {
       brackets to the chip's ports, e.g. <code>qb1 drive [Charge line]</code>.</div>`;
     return;
   }
+  const multiChip = chips.length > 1;
   el.innerHTML = wiringTables.map((t, ti) => `
     <div class="card" style="overflow-x:auto;margin-bottom:16px">
       <div style="font-size:13px;font-weight:500;margin-bottom:10px">${esc(t.category)}
@@ -833,9 +837,10 @@ function renderWiring() {
         </tr></thead>
         <tbody>
           ${t.rows.map((r, ri) => `<tr>
-            <td style="font-weight:500;white-space:nowrap">${esc(r.port)}</td>
+            <td style="font-weight:500;white-space:nowrap">${esc(r.port)}${multiChip
+              ? `<span class="wt-vdev" style="display:block">${esc(r.chip)}</span>` : ''}</td>
             ${r.slots.map((cell, ci) => cell
-              ? `<td class="wt-cell${cell.visits.some(v => v.inCable || v.outCable) ? ' wt-edit' : ''}" data-t="${ti}" data-r="${ri}" data-c="${ci}"><code>${wiringCellText(cell)}</code></td>`
+              ? `<td class="wt-cell${cell.visits.some(v => v.inCable || v.outCable) ? ' wt-edit' : ''}" data-t="${ti}" data-r="${ri}" data-c="${ci}">${wiringCellHtml(cell, t.columns[ci])}</td>`
               : `<td class="wt-none">—</td>`).join('')}
             <td style="white-space:nowrap">${r.dangling
               ? `<button class="icon-btn add-port wt-connect" data-t="${ti}" data-r="${ri}" title="Extend this line from ${esc(r.dangling.dev)} [${esc(r.dangling.port)}]">＋ connect</button>`

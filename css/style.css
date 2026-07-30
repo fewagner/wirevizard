@@ -288,6 +288,8 @@ code { font-family: monospace; font-size: 11px; }
 .wt-edit { cursor: pointer; }
 .wt-edit:hover { background: var(--bg3) !important; }
 .wt-none { color: var(--text3); text-align: center; }
+.wt-visit { white-space: nowrap; padding: 1px 0; }
+.wt-vdev { font-size: 10px; color: var(--text3); }
 .wt-ep-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; white-space: nowrap; }
 .wt-ep-label { font-size: 10px; color: var(--text3); font-family: monospace; min-width: 58px; }
 .wt-ep-row select, .wt-ep-row input { font-size: 12px; padding: 2px 5px; margin: 0;

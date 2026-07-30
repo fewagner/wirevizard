@@ -566,8 +566,9 @@ export function compileWiringTables(cables, devices, setupName) {
           visits[visits.length - 1].outPort = s.toPort;
         }
       }
+      // the chip visit is the row anchor itself — it gets no cell of its own
       const cells = [];
-      for (const v of visits) {
+      for (const v of visits.slice(1)) {
         const role = roleOf.get(v.dev) || v.dev;
         const last = cells[cells.length - 1];
         if (last && last.role === role) last.visits.push(v);
