@@ -9,8 +9,10 @@
 import { store } from './store.js';
 import { toast } from './ui.js';
 import { openDetails } from './details.js';
-import { deviceView, setDevicePosition, addCable, addPortToDevice, nextCableId } from './data.js';
+import { deviceView, setDevicePosition, addCable, addPortToDevice } from './data.js';
 import { esc } from './util.js';
+
+const SNAP = 10;  // drag positions snap to this grid
 
 const ROW = 16;         // port row height
 const TITLE_H = 24;     // box title bar height
@@ -81,8 +83,9 @@ export function renderAllDiagram(container) {
     if (c.to_device) connected.get(c.to_device).add(c.to_port);
   }
 
+  // First pass: compute each box's size, note which have stored positions.
+  const pending = [];
   const geoms = new Map();
-  let autoI = 0;
   const placed = [];
   for (const name of names) {
     const d = store.devices.find(x => x.name === name);
@@ -90,15 +93,35 @@ export function renderAllDiagram(container) {
     const orderedPorts = v ? v.ports.filter(p => connected.get(name).has(p)) : [];
     const extraPorts = [...connected.get(name)].filter(p => p && !orderedPorts.includes(p));
     const rows = [...orderedPorts, ...extraPorts];
-    let x = d && d.x !== '' ? Number(d.x) : NaN;
-    let y = d && d.y !== '' ? Number(d.y) : NaN;
-    if (!isFinite(x) || !isFinite(y)) {
-      x = 40 + (autoI % 5) * 280;
-      y = 40 + Math.floor(autoI / 5) * 220;
-      autoI++;
+    const totalPorts = v ? v.ports.length : rows.length;
+    const x = d && d.x !== '' ? Number(d.x) : NaN;
+    const y = d && d.y !== '' ? Number(d.y) : NaN;
+    if (isFinite(x) && isFinite(y)) {
+      const g = boxGeom(name, rows, totalPorts, x, y);
+      geoms.set(name, g);
+      placed.push(g);
+    } else {
+      pending.push({ name, rows, totalPorts });
     }
-    const g = boxGeom(name, rows, v ? v.ports.length : rows.length, x, y);
-    geoms.set(name, g);
+  }
+
+  // Second pass: slot unplaced boxes into actual free space (margin 24px),
+  // scanning candidate grid positions so nothing overlaps.
+  const MARGIN = 24;
+  const overlaps = (x, y, w, h) => placed.some(o =>
+    x < o.x + o.w + MARGIN && o.x < x + w + MARGIN &&
+    y < o.y + o.h + MARGIN && o.y < y + h + MARGIN);
+  for (const p of pending) {
+    const probe = boxGeom(p.name, p.rows, p.totalPorts, 0, 0);
+    let px = 40, py = 40;
+    outer:
+    for (let y = 40; y < 6000; y += 80) {
+      for (let x = 40; x < 2400; x += 100) {
+        if (!overlaps(x, y, probe.w, probe.h)) { px = x; py = y; break outer; }
+      }
+    }
+    const g = boxGeom(p.name, p.rows, p.totalPorts, px, py);
+    geoms.set(p.name, g);
     placed.push(g);
   }
 
@@ -120,8 +143,11 @@ export function renderAllDiagram(container) {
   });
 
   container.innerHTML = `
-    <p class="hint" style="margin-bottom:8px">Drag devices to arrange them — positions are stored in
-    <code>devices.csv</code> and committed on Save. Click a box or cable for its comment.</p>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap">
+      <p class="hint" style="margin:0;flex:1">Drag devices to arrange them — positions are stored in
+      <code>devices.csv</code> and committed on Save. Click a box or cable for its comment.</p>
+      <button class="btn dg-arrange" title="Lay out all devices by signal flow">✨ Auto-arrange</button>
+    </div>
     <div class="card dg-wrap" style="overflow:auto;max-height:75vh;padding:0">
       <svg class="dg-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
         ${cablesHtml}
@@ -129,7 +155,70 @@ export function renderAllDiagram(container) {
       </svg>
     </div>`;
 
+  container.querySelector('.dg-arrange').addEventListener('click', () => {
+    if (!confirm('Auto-arrange all devices by signal flow? This overwrites the current positions (undo by not saving).')) return;
+    autoArrange(placed, cables);
+  });
+
   wireDiagram(container.querySelector('svg'), { draggable: true });
+}
+
+// Layered layout: within each connected component, BFS from the best-connected
+// device; layers become columns, boxes stack inside a column, components stack
+// vertically. Writes every device's position in one mutation.
+export function autoArrange(geoms, cables) {
+  const degree = new Map(geoms.map(g => [g.name, 0]));
+  const adj = new Map(geoms.map(g => [g.name, new Set()]));
+  for (const c of cables) {
+    if (!adj.has(c.from_device) || !adj.has(c.to_device) || c.from_device === c.to_device) continue;
+    adj.get(c.from_device).add(c.to_device);
+    adj.get(c.to_device).add(c.from_device);
+    degree.set(c.from_device, degree.get(c.from_device) + 1);
+    degree.set(c.to_device, degree.get(c.to_device) + 1);
+  }
+  const byName = new Map(geoms.map(g => [g.name, g]));
+  const unvisited = new Set(byName.keys());
+  const GAP_X = 70, GAP_Y = 30, GAP_COMP = 60;
+  let compY = 40;
+  const pos = new Map();
+
+  while (unvisited.size) {
+    // hub of the largest remaining degree starts the component
+    const hub = [...unvisited].sort((a, b) => degree.get(b) - degree.get(a))[0];
+    const layers = [[hub]];
+    unvisited.delete(hub);
+    for (let li = 0; layers[li] && layers[li].length; li++) {
+      const next = [];
+      for (const n of layers[li]) {
+        for (const m of adj.get(n)) {
+          if (unvisited.has(m)) { unvisited.delete(m); next.push(m); }
+        }
+      }
+      if (next.length) layers.push(next);
+    }
+    let x = 40;
+    let compH = 0;
+    for (const layer of layers) {
+      let y = compY;
+      let w = 0;
+      for (const n of layer) {
+        const g = byName.get(n);
+        pos.set(n, { x, y });
+        y += g.h + GAP_Y;
+        w = Math.max(w, g.w);
+      }
+      compH = Math.max(compH, y - compY);
+      x += w + GAP_X;
+    }
+    compY += compH + GAP_COMP;
+  }
+
+  store.mutate(s => {
+    for (const [name, p] of pos) {
+      if (s.devices.some(d => d.name === name)) setDevicePosition(s, name, p.x, p.y);
+    }
+  });
+  toast('Devices arranged by signal flow — press Save to keep the layout.', 'ok');
 }
 
 // ---------- query-device diagram ----------
@@ -305,8 +394,8 @@ function wireDiagram(svg, { draggable }) {
           const dx = (e.clientX - startX) / scale, dy = (e.clientY - startY) / scale;
           const d = store.devices.find(x => x.name === name);
           const rect = box.querySelector('.dg-rect');
-          const nx = Math.max(0, Number(rect.getAttribute('x')) + dx);
-          const ny = Math.max(0, Number(rect.getAttribute('y')) + dy);
+          const nx = Math.max(0, Math.round((Number(rect.getAttribute('x')) + dx) / SNAP) * SNAP);
+          const ny = Math.max(0, Math.round((Number(rect.getAttribute('y')) + dy) / SNAP) * SNAP);
           if (d) {
             try { store.mutate(s => setDevicePosition(s, name, nx, ny)); } catch { }
           } else {

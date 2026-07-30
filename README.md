@@ -25,16 +25,20 @@ This repository contains only the app — generic static HTML/CSS/JS with no bui
 
 | File | Purpose |
 |---|---|
-| `cables.csv` | One row per physical cable: `cable_id, from_device, from_port, to_device, to_port, setup, tag, comment` |
-| `devices.csv` | Registry of devices; fixed columns `name, description, x, y, comment`, every further column one port |
+| `cables.csv` | One row per physical cable: `cable_id, from_device, from_port, to_device, to_port, setup, comment` |
+| `devices.csv` | Registry of devices; fixed columns `name, description, role, x, y, comment`, every further column one port |
 | `setups.csv` | Registry of measurement setups: `name, description` |
 | `images/` | Images attached to comments, uploaded through the app |
 
-A port column contains either a plain name (`RF out`) or a name with a parenthesised list of internally-connected ports (`A2 (A1)`, bidirectional). The Signal-paths tab traces end-to-end signal chains through cables and these internal connections. `x`/`y` are the device's position on the cabling diagram; `comment` is free-text Markdown that may link images (`![label](images/…)`). Files written before these columns existed parse fine and are migrated on the next save.
+A port column contains a name, optionally a parenthesised list of internally-connected ports (`A2 (A1)`, bidirectional), and optionally a bracketed category (`qb1 drive [Charge line]`). The Signal-paths tab traces end-to-end signal chains through cables and internal connections. `role` groups devices in the setup tables (use `Chip` for the sample itself); `x`/`y` are the device's position on the cabling diagram; `comment` is free-text Markdown that may link images (`![label](images/…)`). Files written before these columns existed parse fine and are migrated on the next save.
+
+## Setup tables
+
+The Setup-tables tab reproduces classic per-setup wiring spreadsheets — one table per port category (Charge line, Flux line, …), one row per categorized chip port, one column per device role — but every row is traced live from `cables.csv`, so the table can never disagree with the cabling. Cells edit in place (each edit is a validated re-plug of the adjacent cable endpoint) and `＋ connect` extends a line hop by hop.
 
 ## Features
 
-Query by device or setup, as a table or as a **diagram** (the queried device with all ports and labeled far ends, plus inline add-cable/add-port forms) · signal-path tracing with tag filter (incomplete chains are shown too, marked with the exact dead-end port) · full cable table with live search and inline editing, or a **cabling diagram** with draggable device boxes (positions persist in `devices.csv`) and orthogonally-routed cables · free-text comments with attached images on every device and cable (💬 in the tables, click any box/line in the diagrams) · editable device/port and setup registries with cascading renames and deletes · validation · demo mode (`?demo=1`).
+Query by device or setup, as a table or as a **diagram** (the queried device with all ports and labeled far ends, plus inline add-cable/add-port forms) · signal-path tracing rendered as horizontal device chains (incomplete chains are shown too, marked with the exact dead-end port) · per-setup **wiring tables** compiled from chip-port categories, editable in place · full cable table with live search and inline editing, or a **cabling diagram** with draggable device boxes (positions persist in `devices.csv`), collision-free auto-placement, and one-click auto-arrange by signal flow · free-text comments with attached images on every device and cable (💬 in the tables, click any box/line in the diagrams) · editable device/port and setup registries with cascading renames and deletes · validation · demo mode (`?demo=1`).
 
 ## Local development
 

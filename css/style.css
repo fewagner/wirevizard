@@ -265,6 +265,34 @@ code { font-family: monospace; font-size: 11px; }
   border: 0.5px solid var(--border2); background: var(--bg); color: var(--text);
   font-size: 12px; outline: none; margin: 0; min-width: 130px; }
 
+/* Signal-path chains */
+.sp-chain { display: flex; align-items: center; overflow-x: auto; padding: 4px 0; gap: 2px; }
+.sp-pill { flex-shrink: 0; background: var(--bg2); border: 0.5px solid var(--border2);
+           border-radius: 8px; padding: 5px 12px; text-align: center; }
+.sp-pill.sp-click { cursor: pointer; }
+.sp-pill.sp-click:hover { border-color: var(--accent); }
+.sp-dev { display: block; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.sp-ports { display: block; font-size: 11px; color: var(--text2);
+            font-family: monospace; white-space: nowrap; }
+.sp-arrow { flex-shrink: 0; text-align: center; padding: 0 6px; cursor: pointer; }
+.sp-cid { display: block; font-size: 10px; color: var(--blue-text); font-family: monospace; }
+.sp-line { display: block; font-size: 14px; color: var(--blue-text); line-height: 0.9; }
+.sp-arrow:hover .sp-cid { text-decoration: underline; }
+.sp-warn { flex-shrink: 0; background: var(--amber-bg); color: var(--amber-text);
+           border-radius: 8px; padding: 6px 10px; font-size: 11px; margin: 0 6px; white-space: nowrap; }
+
+/* Setup wiring tables */
+.wt-table th { white-space: nowrap; }
+.wt-table td { vertical-align: top; }
+.wt-cell code { white-space: nowrap; }
+.wt-edit { cursor: pointer; }
+.wt-edit:hover { background: var(--bg3) !important; }
+.wt-none { color: var(--text3); text-align: center; }
+.wt-ep-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; white-space: nowrap; }
+.wt-ep-label { font-size: 10px; color: var(--text3); font-family: monospace; min-width: 58px; }
+.wt-ep-row select, .wt-ep-row input { font-size: 12px; padding: 2px 5px; margin: 0;
+  border-radius: 4px; border: 1px solid var(--accent); background: var(--bg); color: var(--text); }
+
 /* Details popup (comments + images) */
 .dt-open.has-comment { background: var(--blue-bg); }
 .modal.details textarea { width: 100%; padding: 8px 10px; border-radius: var(--radius);

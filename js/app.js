@@ -5,14 +5,14 @@
 
 import { store } from './store.js';
 import { initSettings, openSettings } from './settings.js';
-import { initDetails, detailsBtnHtml, wireDetailsButtons } from './details.js';
+import { initDetails, openDetails, detailsBtnHtml, wireDetailsButtons } from './details.js';
 import { renderAllDiagram, renderQueryDiagram, isDiagramDragging } from './diagram.js';
 import { toast } from './ui.js';
 import { esc, b64DecodeUtf8, lsGet, lsSet } from './util.js';
 import {
-  deviceView, nextCableId, validate, computeSignalPaths,
+  deviceView, nextCableId, validate, computeSignalPaths, compileWiringTables, CHIP_ROLE,
   addCable, deleteCable, updateCable,
-  addDevice, renameDevice, updateDeviceDescription,
+  addDevice, renameDevice, updateDeviceDescription, setDeviceRole,
   updatePort, addPortToDevice, deletePortFromDevice, deleteDevice,
   addSetup, renameSetup, updateSetupDescription, deleteSetup,
 } from './data.js';
@@ -20,6 +20,7 @@ import {
 let selectedDevice = null;
 let selectedSetup = null;
 let selectedSignalSetup = null;
+let selectedWiringSetup = null;
 let currentTab = 'query';
 let allView = 'table';     // "All cables" sub-tab: table | diagram
 let queryView = 'table';   // "Query device" sub-tab: table | diagram
@@ -70,7 +71,7 @@ function importSetupHash() {
 
 // ── Tabs ───────────────────────────────────────────────────────────────────────
 
-const TAB_NAMES = ['query', 'setup', 'signal-paths', 'all', 'all-devices', 'all-setups', 'add', 'add-device', 'add-setup', 'validate'];
+const TAB_NAMES = ['query', 'setup', 'signal-paths', 'wiring', 'all', 'all-devices', 'all-setups', 'add', 'add-device', 'add-setup', 'validate'];
 
 function setTab(t) {
   currentTab = t;
@@ -79,6 +80,7 @@ function setTab(t) {
   });
   document.querySelectorAll('#tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
   if (t === 'add') initCableForm();
+  if (t === 'add-device') initRoleDatalist();
   renderTab(t);
 }
 
@@ -90,6 +92,14 @@ function renderTab(t) {
   if (t === 'all-devices') renderAllDevices();
   if (t === 'all-setups') renderAllSetups();
   if (t === 'signal-paths') renderSignalPaths();
+  if (t === 'wiring') renderWiring();
+}
+
+function initRoleDatalist() {
+  const roles = [...new Set(store.devices.map(d => (d.role || '').trim()).filter(Boolean))].sort();
+  if (!roles.some(r => r.toLowerCase() === CHIP_ROLE)) roles.unshift('Chip');
+  document.getElementById('role-datalist').innerHTML =
+    roles.map(r => `<option value="${esc(r)}"></option>`).join('');
 }
 
 // Re-render everything visible after data changed — but never yank the DOM out
@@ -97,6 +107,7 @@ function renderTab(t) {
 function renderCurrent() {
   if (isDiagramDragging()) return;
   if (document.querySelector('.container input.inline-input, .container td.editable input')) return;
+  if (document.querySelector('#wiring-result select, #wiring-result input')) return;
   const act = document.activeElement;
   if (act && act.closest && act.closest('.dg-form')) return;
   renderTab(currentTab);
@@ -207,7 +218,6 @@ function renderDeviceQuery() {
       <td><strong>${esc(out ? c.to_device : c.from_device)}</strong></td>
       <td><code>${esc(out ? c.to_port : c.from_port)}</code></td>
       <td style="color:var(--text2)">${esc(c.setup)}</td>
-      <td style="color:var(--text2)">${esc(c.tag)}</td>
     </tr>`;
   }).join('');
   el.innerHTML = `<div class="card" style="overflow-x:auto">
@@ -218,7 +228,7 @@ function renderDeviceQuery() {
     <table>
       <thead><tr>
         <th>Cable</th><th>Dir</th><th>Local port</th>
-        <th>Remote device</th><th>Remote port</th><th>Setup</th><th>Tag</th>
+        <th>Remote device</th><th>Remote port</th><th>Setup</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
@@ -247,7 +257,6 @@ function renderSetupQuery() {
     <td><code>${esc(c.cable_id)}</code></td>
     <td>${esc(c.from_device)}</td><td><code>${esc(c.from_port)}</code></td>
     <td>${esc(c.to_device)}</td><td><code>${esc(c.to_port)}</code></td>
-    <td style="color:var(--text2)">${esc(c.tag)}</td>
   </tr>`).join('');
   el.innerHTML = `<div class="card" style="overflow-x:auto">
     <div style="font-size:13px;font-weight:500;margin-bottom:10px">
@@ -257,7 +266,7 @@ function renderSetupQuery() {
     <table>
       <thead><tr>
         <th>Cable</th><th>From device</th><th>From port</th>
-        <th>To device</th><th>To port</th><th>Tag</th>
+        <th>To device</th><th>To port</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
@@ -293,13 +302,12 @@ function renderAll() {
       ${editCell(c.cable_id, 'to_device', c.to_device, false)}
       ${editCell(c.cable_id, 'to_port', c.to_port, true)}
       ${editCell(c.cable_id, 'setup', c.setup, false)}
-      ${editCell(c.cable_id, 'tag', c.tag, false)}
       <td style="width:64px;padding:4px 6px;white-space:nowrap">
         ${detailsBtnHtml('cable', c.cable_id, c.comment)}
         <button class="del-btn" data-cable-id="${esc(c.cable_id)}" title="Delete cable">×</button>
       </td>
     </tr>`
-  ).join('') || '<tr><td colspan="8" class="empty">No matches</td></tr>';
+  ).join('') || '<tr><td colspan="7" class="empty">No matches</td></tr>';
 
   document.getElementById('stats').innerHTML = `
     <div class="stat"><div class="stat-label">Total cables</div><div class="stat-val">${CABLES().length}</div></div>
@@ -449,7 +457,7 @@ function initCableForm() {
 }
 
 function clearCableForm() {
-  ['f-id', 'f-tag'].forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('f-id').value = '';
   document.getElementById('flash').textContent = '';
   initCableForm();  // repopulates and rebuilds port inputs
 }
@@ -465,7 +473,7 @@ function submitCable() {
     cable_id: get('f-id'),
     from_device: get('f-from-dev'), from_port: get('f-from-port'),
     to_device: get('f-to-dev'), to_port: get('f-to-port'),
-    setup: get('f-setup'), tag: get('f-tag'),
+    setup: get('f-setup'),
   }), 'flash');
   if (r.ok) {
     flash(`✓ Cable ${r.value} added — press Save to commit.`, true);
@@ -504,7 +512,7 @@ function getPortStrings() {
 }
 
 function clearDeviceForm() {
-  ['d-name', 'd-desc'].forEach(id => { document.getElementById(id).value = ''; });
+  ['d-name', 'd-desc', 'd-role'].forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('d-port-list').innerHTML = '';
   document.getElementById('flash-device').textContent = '';
 }
@@ -515,6 +523,7 @@ function submitDevice() {
   const r = tryMutate(s => addDevice(s, {
     name,
     description: document.getElementById('d-desc').value.trim(),
+    role: document.getElementById('d-role').value.trim(),
     port_strings: getPortStrings(),
   }), 'flash-device');
   if (r.ok) { flash(`✓ Device '${name}' added — press Save to commit.`, true, 'flash-device'); clearDeviceForm(); }
@@ -555,10 +564,11 @@ function renderAllDevices() {
       return `<tr>
         <td class="editable" data-dtype="device-name" data-device="${esc(d.name)}">${esc(d.name)}</td>
         <td class="editable" data-dtype="device-desc" data-device="${esc(d.name)}">${esc(d.description || '')}</td>
+        <td class="editable" data-dtype="device-role" data-device="${esc(d.name)}">${esc(d.role || '')}</td>
         <td>${portBadges}<button class="icon-btn add-port" data-action="add-port" data-device="${esc(d.name)}" title="Add port">＋ port</button></td>
         <td style="white-space:nowrap">${detailsBtnHtml('device', d.name, d.comment)}<button class="btn-sm danger" data-action="delete-device" data-device="${esc(d.name)}">Delete</button></td>
       </tr>`;
-    }).join('') || '<tr><td colspan="4" class="empty">No devices yet</td></tr>';
+    }).join('') || '<tr><td colspan="5" class="empty">No devices yet</td></tr>';
 }
 
 function startDeviceFieldEdit(td) {
@@ -573,12 +583,14 @@ function startDeviceFieldEdit(td) {
   function commit() {
     const newVal = input.value.trim();
     input.remove();
-    if (!newVal || newVal === original) { renderAllDevices(); return; }
-    const r = tryMutate(s => dtype === 'device-name'
-      ? renameDevice(s, device, newVal)
-      : updateDeviceDescription(s, device, newVal), 'flash-devices');
+    // role and description may be cleared; a name may not
+    if (newVal === original || (!newVal && dtype === 'device-name')) { renderAllDevices(); return; }
+    tryMutate(s => {
+      if (dtype === 'device-name') renameDevice(s, device, newVal);
+      else if (dtype === 'device-role') setDeviceRole(s, device, newVal);
+      else updateDeviceDescription(s, device, newVal);
+    }, 'flash-devices');
     renderAllDevices();
-    if (!r.ok) return;
   }
   function cancel() { input.remove(); renderAllDevices(); }
   function onBlur() { if (!done) { done = true; commit(); } }
@@ -696,6 +708,46 @@ function renderSignalSetupChips() {
       : '<span style="color:var(--text3);font-size:12px">No setups defined yet — use "+ Add setup".</span>';
 }
 
+// Build the horizontal chain html for one path: device pills joined by cable
+// arrows; a device's internal connection shows as "entry ⇢ exit" inside its
+// pill. Shared by the signal-paths tab; pills/arrows open the detail popup.
+function chainHtml(p) {
+  const pills = [];
+  const parts = [];
+  const first = p.steps[0];
+  if (first) pills.push({ dev: first.fromDev, entry: '', exit: first.fromPort });
+  for (const s of p.steps) {
+    if (s.type === 'cable') {
+      pills.push({ dev: s.toDev, entry: s.toPort, exit: '' });
+      pills[pills.length - 2].arrowAfter = s.cable_id;
+    } else {
+      pills[pills.length - 1].exit = s.toPort;
+    }
+  }
+  const known = new Set(store.devices.map(d => d.name));
+  if (p.incompleteStart) {
+    parts.push(`<span class="sp-warn" title="Earlier links are missing from the data or not assigned to this setup">⚠ mid-chain start</span>`);
+  }
+  for (const pill of pills) {
+    const ports = pill.entry && pill.exit && pill.entry !== pill.exit
+      ? `${esc(pill.entry)} ⇢ ${esc(pill.exit)}`
+      : esc(pill.entry || pill.exit || '');
+    parts.push(`<span class="sp-pill${known.has(pill.dev) ? ' sp-click' : ''}" data-sp-dev="${esc(pill.dev)}">
+      <span class="sp-dev">${esc(pill.dev)}</span>
+      <span class="sp-ports">${ports}</span>
+    </span>`);
+    if (pill.arrowAfter) {
+      parts.push(`<span class="sp-arrow sp-click" data-sp-cable="${esc(pill.arrowAfter)}" title="Cable ${esc(pill.arrowAfter)}">
+        <span class="sp-cid">${esc(pill.arrowAfter)}</span><span class="sp-line">⟶</span>
+      </span>`);
+    }
+  }
+  if (p.incompleteEnd) {
+    parts.push(`<span class="sp-warn" title="No onward cable or internal connection in this setup">⚠ dead end at ${esc(p.incompleteEnd.port)}</span>`);
+  }
+  return `<div class="sp-chain">${parts.join('')}</div>`;
+}
+
 function renderSignalPaths() {
   renderSignalSetupChips();
   const el = document.getElementById('signal-paths-result');
@@ -709,54 +761,161 @@ function renderSignalPaths() {
     return;
   }
   const paths = computeSignalPaths(setupCables, store.devices);
-  const tagFilter = (document.getElementById('signal-tag-filter').value || '').trim().toLowerCase();
-  const cableById = {};
-  setupCables.forEach(c => { cableById[c.cable_id] = c; });
-  const taggedIds = tagFilter
-    ? new Set(setupCables.filter(c => (c.tag || '').toLowerCase().includes(tagFilter)).map(c => c.cable_id))
-    : null;
-  const filtered = tagFilter
-    ? paths.filter(p => p.steps.some(s => s.type === 'cable' && taggedIds.has(s.cable_id)))
-    : paths;
-  if (!filtered.length) {
-    el.innerHTML = '<div class="empty">No signal paths found' +
-      (tagFilter ? ' matching the tag filter' : '') + '</div>';
+  if (!paths.length) {
+    el.innerHTML = '<div class="empty">No signal paths found</div>';
     return;
   }
-  const warnLine = txt =>
-    `<div style="font-size:11px;padding:3px 6px;margin:2px 0;border-radius:5px;` +
-    `background:var(--amber-bg);color:var(--amber-text)">⚠ ${txt}</div>`;
-  el.innerHTML = filtered.map((p, i) => {
+  el.innerHTML = paths.map((p, i) => {
     const incomplete = p.incompleteStart || p.incompleteEnd;
-    const stepsHtml = p.steps.map(s => {
-      if (s.type === 'cable') {
-        const tag = (cableById[s.cable_id] || {}).tag || '';
-        const tagBadge = tag
-          ? ` <span style="color:var(--text3);font-size:10px">[${esc(tag)}]</span>` : '';
-        return `<div style="font-family:monospace;font-size:12px;padding:3px 0">` +
-          `${esc(s.fromDev)} [${esc(s.fromPort)}]` +
-          ` <span style="color:var(--blue-text)">→(${esc(s.cable_id)})→</span> ` +
-          `${esc(s.toDev)} [${esc(s.toPort)}]${tagBadge}</div>`;
-      } else {
-        return `<div style="font-family:monospace;font-size:12px;padding:3px 0;color:var(--text2)">` +
-          `${esc(s.fromDev)} [${esc(s.fromPort)}]` +
-          ` <span style="color:var(--text3);font-style:italic">~~internal~~</span> ` +
-          `${esc(s.toDev)} [${esc(s.toPort)}]</div>`;
-      }
-    }).join('');
     const title = `Path ${i + 1}` + (incomplete
       ? ' <span style="color:var(--amber-text);font-weight:400">— incomplete</span>' : '');
-    const startWarn = p.incompleteStart
-      ? warnLine(`starts mid-chain at ${esc(p.incompleteStart.dev)} [${esc(p.incompleteStart.port)}] — earlier links are missing from the data or not assigned to this setup`)
-      : '';
-    const endWarn = p.incompleteEnd
-      ? warnLine(`dead end at ${esc(p.incompleteEnd.dev)} [${esc(p.incompleteEnd.port)}] — no onward cable or internal connection in this setup`)
-      : '';
     return `<div class="card" style="margin-bottom:12px${incomplete ? ';border-color:var(--amber-text)' : ''}">
       <div style="font-size:11px;font-weight:500;color:var(--text2);margin-bottom:8px">${title}</div>
-      ${startWarn}${stepsHtml}${endWarn}
+      ${chainHtml(p)}
     </div>`;
   }).join('');
+}
+
+// ── Setup tables ───────────────────────────────────────────────────────────────
+// One table per port category (Charge line, Flux line, …): rows are chip
+// ports carrying that category, traced through the setup's cables; columns
+// are device roles. Cells edit in place — every change compiles to the same
+// validated cable mutations as the rest of the app.
+
+let wiringTables = [];
+
+function renderWiringSetupChips() {
+  const setups = SETUPS();
+  document.getElementById('wiring-setup-chips').innerHTML =
+    setups.length
+      ? setups.map(s => `<span class="chip${selectedWiringSetup === s.name ? ' sel' : ''}" data-wire-setup="${esc(s.name)}">${esc(s.name)}</span>`).join('')
+      : '<span style="color:var(--text3);font-size:12px">No setups defined yet — use "+ Add setup".</span>';
+}
+
+function wiringCellText(cell) {
+  return cell.visits.map(v => {
+    if (!v.inPort) return esc(v.outPort);   // the chip anchor
+    return v.outPort && v.outPort !== v.inPort
+      ? `${esc(v.inPort)} ⇢ ${esc(v.outPort)}`
+      : esc(v.inPort);
+  }).join(' · ');
+}
+
+function renderWiring() {
+  renderWiringSetupChips();
+  const el = document.getElementById('wiring-result');
+  if (!selectedWiringSetup) {
+    el.innerHTML = '<div class="empty">Select a setup above to see its wiring tables</div>';
+    return;
+  }
+  const chips = store.devices.filter(d => (d.role || '').trim().toLowerCase() === CHIP_ROLE);
+  if (!chips.length) {
+    el.innerHTML = `<div class="empty">No chip device yet. Give the sample a device entry with role
+      <code>Chip</code> and add a category in square brackets to its ports, e.g.
+      <code>qb1 drive [Charge line]</code> — each such port becomes a row here.</div>`;
+    return;
+  }
+  wiringTables = compileWiringTables(CABLES(), store.devices, selectedWiringSetup);
+  if (!wiringTables.length) {
+    el.innerHTML = `<div class="empty">No categorized chip ports found. Add categories in square
+      brackets to the chip's ports, e.g. <code>qb1 drive [Charge line]</code>.</div>`;
+    return;
+  }
+  el.innerHTML = wiringTables.map((t, ti) => `
+    <div class="card" style="overflow-x:auto;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:500;margin-bottom:10px">${esc(t.category)}
+        <span style="color:var(--text2);font-weight:400"> — ${t.rows.length} line(s)</span></div>
+      <table class="wt-table">
+        <thead><tr>
+          <th>line</th>
+          ${t.columns.map(c => `<th>${esc(c)}</th>`).join('')}
+          <th></th>
+        </tr></thead>
+        <tbody>
+          ${t.rows.map((r, ri) => `<tr>
+            <td style="font-weight:500;white-space:nowrap">${esc(r.port)}</td>
+            ${r.slots.map((cell, ci) => cell
+              ? `<td class="wt-cell${cell.visits.some(v => v.inCable || v.outCable) ? ' wt-edit' : ''}" data-t="${ti}" data-r="${ri}" data-c="${ci}"><code>${wiringCellText(cell)}</code></td>`
+              : `<td class="wt-none">—</td>`).join('')}
+            <td style="white-space:nowrap">${r.dangling
+              ? `<button class="icon-btn add-port wt-connect" data-t="${ti}" data-r="${ri}" title="Extend this line from ${esc(r.dangling.dev)} [${esc(r.dangling.port)}]">＋ connect</button>`
+              : ''}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`).join('') + `<p class="hint">Rows are chip ports with a [category]; they are traced live through
+    this setup's cables. Click a cell to re-plug that hop, ＋ connect to extend the line.</p>`;
+}
+
+// Click a cell → inline editor with one port dropdown per cable endpoint on
+// that device; committing runs updateCable on the changed endpoints.
+function startWiringCellEdit(td) {
+  if (td.querySelector('select, input')) return;
+  const cell = wiringTables[td.dataset.t].rows[td.dataset.r].slots[td.dataset.c];
+  const endpoints = [];
+  for (const v of cell.visits) {
+    if (v.inCable) endpoints.push({ cable: v.inCable, dev: v.dev, port: v.inPort, label: `${v.inCable} in` });
+    if (v.outCable) endpoints.push({ cable: v.outCable, dev: v.dev, port: v.outPort || v.inPort || '', label: `${v.outCable} out` });
+  }
+  if (!endpoints.length) return;
+  td.innerHTML = endpoints.map((ep, i) => {
+    const d = store.devices.find(x => x.name === ep.dev);
+    const ports = d ? deviceView(d).ports : [];
+    const input = ports.length
+      ? `<select class="wt-ep" data-i="${i}">${ports.map(p => `<option value="${esc(p)}"${p === ep.port ? ' selected' : ''}>${esc(p)}</option>`).join('')}</select>`
+      : `<input class="wt-ep inline-input" data-i="${i}" value="${esc(ep.port)}">`;
+    return `<div class="wt-ep-row"><span class="wt-ep-label">${esc(ep.label)}</span>${input}</div>`;
+  }).join('') +
+    `<div class="wt-ep-row"><button class="icon-btn wt-ok" title="Apply">✓</button><button class="icon-btn wt-cancel" title="Cancel">✗</button></div>`;
+  td.querySelector('.wt-cancel').addEventListener('click', e => { e.stopPropagation(); renderWiring(); });
+  td.querySelector('.wt-ok').addEventListener('click', e => {
+    e.stopPropagation();
+    for (const elp of td.querySelectorAll('.wt-ep')) {
+      const ep = endpoints[Number(elp.dataset.i)];
+      const val = elp.value.trim();
+      if (!val || val === ep.port) continue;
+      const cable = CABLES().find(c => c.cable_id === ep.cable);
+      if (!cable) continue;
+      const field = cable.to_device === ep.dev && cable.to_port === ep.port ? 'to_port'
+        : cable.from_device === ep.dev && cable.from_port === ep.port ? 'from_port'
+          : cable.to_device === ep.dev ? 'to_port' : 'from_port';
+      tryMutate(s => updateCable(s, ep.cable, field, val));
+    }
+    renderWiring();
+  });
+}
+
+// "+ connect" → inline mini-form extending the line from its dangling port.
+function startWiringConnect(btn) {
+  const row = wiringTables[btn.dataset.t].rows[btn.dataset.r];
+  const td = btn.closest('td');
+  const devOpts = store.devices.map(d => `<option value="${esc(d.name)}">${esc(d.name)}</option>`).join('');
+  td.innerHTML = `
+    <span class="hint">from ${esc(row.dangling.dev)} [${esc(row.dangling.port)}] to</span>
+    <select class="wt-cdev">${devOpts}</select>
+    <span class="wt-cport-wrap"><input class="wt-cport inline-input" placeholder="port"></span>
+    <button class="icon-btn wt-ok" title="Add cable">✓</button>
+    <button class="icon-btn wt-cancel" title="Cancel">✗</button>`;
+  const rebuild = () => {
+    const d = store.devices.find(x => x.name === td.querySelector('.wt-cdev').value);
+    const ports = d ? deviceView(d).ports : [];
+    td.querySelector('.wt-cport-wrap').innerHTML = ports.length
+      ? `<select class="wt-cport">${ports.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('')}</select>`
+      : `<input class="wt-cport inline-input" placeholder="port">`;
+  };
+  td.querySelector('.wt-cdev').addEventListener('change', rebuild);
+  rebuild();
+  td.querySelector('.wt-cancel').addEventListener('click', () => renderWiring());
+  td.querySelector('.wt-ok').addEventListener('click', () => {
+    const r = tryMutate(s => addCable(s, {
+      from_device: row.dangling.dev, from_port: row.dangling.port,
+      to_device: td.querySelector('.wt-cdev').value,
+      to_port: td.querySelector('.wt-cport').value.trim(),
+      setup: selectedWiringSetup,
+    }));
+    if (r.ok) toast(`✓ Cable ${r.value} added — press Save to commit.`, 'ok');
+    renderWiring();
+  });
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────────
@@ -821,7 +980,27 @@ function boot() {
     renderSignalPaths();
   });
 
-  document.getElementById('signal-tag-filter').addEventListener('input', renderSignalPaths);
+  // chain pills/arrows open the detail popup
+  document.getElementById('signal-paths-result').addEventListener('click', e => {
+    const pill = e.target.closest('[data-sp-dev].sp-click');
+    if (pill) { openDetails('device', pill.dataset.spDev); return; }
+    const arrow = e.target.closest('[data-sp-cable]');
+    if (arrow) openDetails('cable', arrow.dataset.spCable);
+  });
+
+  document.getElementById('wiring-setup-chips').addEventListener('click', e => {
+    const chip = e.target.closest('[data-wire-setup]');
+    if (!chip) return;
+    selectedWiringSetup = chip.dataset.wireSetup === selectedWiringSetup ? null : chip.dataset.wireSetup;
+    renderWiring();
+  });
+  document.getElementById('wiring-result').addEventListener('click', e => {
+    const connect = e.target.closest('.wt-connect');
+    if (connect) { startWiringConnect(connect); return; }
+    const cell = e.target.closest('td.wt-edit');
+    if (cell) startWiringCellEdit(cell);
+  });
+
   document.getElementById('search').addEventListener('input', renderAll);
 
   document.getElementById('all-tbody').addEventListener('dblclick', e => {

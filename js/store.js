@@ -36,12 +36,12 @@ function parseFiles(sha, files) {
 const COLLECTIONS = [
   {
     name: 'cables', path: CABLES_PATH, key: c => c.cable_id,
-    fields: ['from_device', 'from_port', 'to_device', 'to_port', 'setup', 'tag', 'comment'],
+    fields: ['from_device', 'from_port', 'to_device', 'to_port', 'setup', 'comment'],
     serialize: serializeCables,
   },
   {
     name: 'devices', path: DEVICES_PATH, key: d => d.name,
-    fields: ['description', 'x', 'y', 'comment', 'port_strings'],
+    fields: ['description', 'role', 'x', 'y', 'comment', 'port_strings'],
     serialize: serializeDevices,
   },
   {
