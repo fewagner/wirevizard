@@ -23,6 +23,12 @@ contract below).
    deploy finish — pushing `beta` immediately after cancels the main run
    (concurrency group) and, if the beta deploy then fails, nothing is
    deployed; recover with an empty commit on `main`.
+6. **Quirk observed in this repo:** deploy runs triggered by a `beta` push
+   succeed but the served site does not update — only main-ref runs go
+   live. After any beta push, trigger a main run to publish it:
+   `gh workflow run pages.yml --ref main`, or via API
+   (`POST /actions/workflows/pages.yml/dispatches {"ref":"main"}`), or an
+   empty commit on `main`.
 
 ## Version bumps
 
