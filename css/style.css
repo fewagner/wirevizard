@@ -222,12 +222,51 @@ code { font-family: monospace; font-size: 11px; }
 .modal .field { margin-bottom: 4px; }
 .s-testresult { min-height: 16px; }
 
+/* Project switcher */
+.proj-btn { font-family: monospace; font-size: 11px; background: var(--bg2);
+            padding: 3px 8px; border-radius: 4px; border: 0.5px solid var(--border);
+            color: var(--text2); cursor: pointer; }
+.proj-btn:hover { background: var(--bg3); color: var(--text); }
+.proj-menu { position: fixed; z-index: 50; min-width: 260px; max-width: 320px;
+             background: var(--bg); border: 0.5px solid var(--border2);
+             border-radius: var(--radius); box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+             padding: 4px; }
+.proj-menu-item { display: flex; align-items: center; gap: 8px; width: 100%;
+                  padding: 7px 10px; border: none; background: transparent; text-align: left;
+                  border-radius: 6px; cursor: pointer; color: var(--text); font-size: 13px; }
+.proj-menu-item:hover { background: var(--bg2); }
+.proj-menu-item.active .proj-menu-name { font-weight: 600; }
+.proj-menu-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-menu-repo { font-family: monospace; font-size: 10px; color: var(--text3); }
+.proj-menu-check { color: var(--accent); font-weight: 600; }
+.proj-menu-sep { height: 0.5px; background: var(--border); margin: 4px 6px; }
+.proj-menu-add { color: var(--accent); }
+
+/* Onboarding steps + welcome screen */
+.setup-steps { margin: 8px 0 12px 20px; font-size: 12px; line-height: 1.6; color: var(--text2); }
+.setup-steps li { margin-bottom: 8px; }
+.setup-steps a { color: var(--accent); }
+.welcome { display: flex; justify-content: center; padding: 24px 0; }
+.welcome-card { max-width: 560px; background: var(--bg); border: 0.5px solid var(--border);
+                border-radius: var(--radius-lg); padding: 28px 32px; text-align: center; }
+.welcome-logo { font-size: 40px; margin-bottom: 8px; }
+.welcome-card h2 { font-size: 18px; font-weight: 500; margin-bottom: 10px; }
+.welcome-pitch { font-size: 13px; color: var(--text2); line-height: 1.6; margin-bottom: 16px; }
+.welcome-actions { display: flex; gap: 10px; justify-content: center; margin-bottom: 18px; flex-wrap: wrap; }
+.welcome-card .setup-steps { text-align: left; }
+
+/* Settings project rows */
+.s-proj-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+.s-proj-name { flex: 1; min-width: 90px; }
+.s-proj-repo { font-family: monospace; font-size: 10px; color: var(--text3); white-space: nowrap; }
+
 /* Toasts */
 #toasts { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
           display: flex; flex-direction: column; gap: 8px; z-index: 60; align-items: center; }
 .toast { padding: 9px 16px; border-radius: 20px; font-size: 13px; cursor: pointer;
          background: var(--text); color: var(--bg); box-shadow: 0 6px 20px rgba(0,0,0,0.25);
          max-width: min(560px, calc(100vw - 32px)); transition: opacity .3s; }
+a.toast { text-decoration: none; display: block; }
 .toast-ok  { background: var(--green-text); color: #fff; }
 .toast-err { background: var(--red-text);   color: #fff; }
 .toast-out { opacity: 0; }

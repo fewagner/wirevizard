@@ -19,8 +19,42 @@ import {
   parseSetups, serializeSetups,
 } from './data.js';
 import { lsGet, lsSet, lsDel, clone, debounce, slugify, uid } from './util.js';
+import { FORMAT_VERSION } from './version.js';
 
-const SETTINGS_KEY = 'wv:settings';
+const SETTINGS_KEY = 'wv:settings';   // legacy single-connection key (migrated)
+const PROJECTS_KEY = 'wv:projects';
+const ACTIVE_KEY = 'wv:active';
+export const META_PATH = 'meta.json';
+
+// Returns the project list, converting a legacy single `wv:settings` entry on
+// first use. Exported so the share-link import (which runs before the store
+// boots) migrates the same way instead of clobbering the legacy project.
+export function migrateProjects() {
+  let projects = lsGet(PROJECTS_KEY);
+  if (!Array.isArray(projects)) {
+    projects = [];
+    const legacy = lsGet(SETTINGS_KEY);
+    if (legacy && legacy.owner && legacy.repo) {
+      projects.push({
+        id: 'p-' + uid(), name: '',
+        owner: legacy.owner, repo: legacy.repo,
+        branch: legacy.branch || 'main', token: legacy.token || '',
+      });
+      lsSet(ACTIVE_KEY, projects[0].id);
+    }
+    lsSet(PROJECTS_KEY, projects);
+  }
+  return projects.filter(p => p && p.id && p.owner && p.repo);
+}
+
+function parseMeta(text) {
+  try {
+    const m = JSON.parse(text);
+    return m && typeof m === 'object' ? { format: Number(m.format) || 1, ...m } : { format: 1 };
+  } catch {
+    return { format: 1 };
+  }
+}
 
 function parseFiles(sha, files) {
   return {
@@ -29,6 +63,7 @@ function parseFiles(sha, files) {
     cables: parseCables(files[CABLES_PATH]?.text || ''),
     devices: parseDevices(files[DEVICES_PATH]?.text || ''),
     setups: parseSetups(files[SETUPS_PATH]?.text || ''),
+    meta: parseMeta(files[META_PATH]?.text || ''),
   };
 }
 
@@ -56,6 +91,8 @@ const recordEq = (col, a, b) => col.fields.every(f => fieldEq(a[f], b[f]));
 
 export const store = {
   settings: { owner: '', repo: '', branch: 'main', token: '' },
+  projects: [],
+  active: null,
   base: parseFiles(null, {}),
   cables: [],
   devices: [],
@@ -95,26 +132,69 @@ export const store = {
     };
   },
 
-  // ----- settings -----
+  // ----- settings / projects -----
+  // A browser can hold several projects (each = one data repo + its token),
+  // e.g. one per cryostat. `settings` is an alias for the *active* project
+  // entry, so all existing repo-keyed storage (drafts, caches) is
+  // per-project for free.
 
   loadSettings() {
-    const s = lsGet(SETTINGS_KEY) || {};
-    this.settings = { owner: '', repo: '', branch: 'main', token: '', ...s };
-    // Sensible defaults when served from GitHub Pages: owner = subdomain,
-    // data repo = "<app repo>-data".
-    if (!this.settings.owner && location.hostname.endsWith('.github.io')) {
-      this.settings.owner = location.hostname.split('.')[0];
-      if (!this.settings.repo) {
-        const seg = location.pathname.split('/').filter(Boolean)[0];
-        if (seg) this.settings.repo = seg + '-data';
-      }
+    this.projects = migrateProjects();
+    const activeId = lsGet(ACTIVE_KEY);
+    this.active = this.projects.find(p => p.id === activeId) || this.projects[0] || null;
+    if (this.active) {
+      lsSet(ACTIVE_KEY, this.active.id);
+      this.active.branch ||= 'main';
+      this.settings = this.active;
+    } else {
+      this.settings = { owner: '', repo: '', branch: 'main', token: '' };
     }
   },
 
   saveSettings(patch) {
     Object.assign(this.settings, patch);
-    lsSet(SETTINGS_KEY, this.settings);
+    if (this.active) lsSet(PROJECTS_KEY, this.projects);
     this.emit('change', { source: 'settings' });
+  },
+
+  projectName() {
+    if (this.demo) return 'Demo data';
+    if (this.active && this.active.name) return this.active.name;
+    return this.configured() ? `${this.settings.owner}/${this.settings.repo}` : '';
+  },
+
+  addProject({ name = '', owner, repo, branch = 'main', token = '' }) {
+    let p = this.projects.find(q => q.owner === owner && q.repo === repo && (q.branch || 'main') === branch);
+    if (p) {
+      if (token) p.token = token;
+      if (name) p.name = name;
+    } else {
+      p = { id: 'p-' + uid(), name, owner, repo, branch, token };
+      this.projects.push(p);
+    }
+    lsSet(PROJECTS_KEY, this.projects);
+    lsSet(ACTIVE_KEY, p.id);
+    return p;
+  },
+
+  removeProject(id) {
+    this.projects = this.projects.filter(p => p.id !== id);
+    lsSet(PROJECTS_KEY, this.projects);
+    if (this.active && this.active.id === id) lsSet(ACTIVE_KEY, this.projects[0]?.id || '');
+  },
+
+  // Switching = set the active pointer and reboot the app; every project's
+  // draft/cache lives under its own storage keys, so nothing is lost.
+  switchProject(id) {
+    lsSet(ACTIVE_KEY, id);
+    if (location.search) location.href = location.pathname + location.hash; // also leaves ?demo=1
+    else location.reload();
+  },
+
+  // The data repo was saved by an app with a newer data format: never write
+  // to it from this (older) client.
+  formatTooNew() {
+    return (this.base.meta.format || 1) > FORMAT_VERSION;
   },
 
   // ----- boot -----
@@ -250,6 +330,10 @@ export const store = {
     for (const [path, dataUrl] of Object.entries(this.pendingImages)) {
       list.push({ path, base64: String(dataUrl).split(',')[1] || '' });
     }
+    // bootstrap the format marker alongside the first real change
+    if (list.length && !this.base.files[META_PATH]) {
+      list.push({ path: META_PATH, text: JSON.stringify({ format: FORMAT_VERSION }, null, 2) + '\n' });
+    }
     return list;
   },
 
@@ -282,7 +366,7 @@ export const store = {
 
   async _fetchBase(gh, head) {
     const tree = await gh.getTree(head.treeSha);
-    const wanted = tree.filter(f => f.type === 'blob' && DATA_PATHS.includes(f.path));
+    const wanted = tree.filter(f => f.type === 'blob' && (DATA_PATHS.includes(f.path) || f.path === META_PATH));
     const files = {};
     for (const f of wanted) {
       const prev = this.base.files[f.path];
@@ -440,6 +524,7 @@ export const store = {
   async save() {
     if (this.demo) throw new GHError('Demo mode: open Settings and configure your own repository to save.', 'demo');
     if (!this.configured()) throw new GHError('Configure the GitHub data repository in Settings first.', 'config');
+    if (this.formatTooNew()) throw new GHError('This data repo was saved by a newer version of WireVizard. Reload the page to update the app — saving is paused until then.', 'format');
     if (!this.settings.token) throw new GHError('Add a GitHub token in Settings to be able to save.', 'no-token');
     if (!this.changes().length) return { nothing: true };
 

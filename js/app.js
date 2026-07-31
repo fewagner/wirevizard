@@ -3,8 +3,10 @@
 // server endpoint is now a store mutation; edits accumulate in the local
 // draft and "Save" commits them to the GitHub data repo in one commit.
 
-import { store } from './store.js';
+import { store, migrateProjects } from './store.js';
 import { initSettings, openSettings } from './settings.js';
+import { initProjects, openProjectModal } from './projects.js';
+import { APP_VERSION, CHANGELOG_URL } from './version.js';
 import { initDetails, openDetails, detailsBtnHtml, wireDetailsButtons } from './details.js';
 import { renderAllDiagram, renderQueryDiagram, isDiagramDragging } from './diagram.js';
 import { toast } from './ui.js';
@@ -49,20 +51,37 @@ function flash(msg, ok, elId) {
   setTimeout(() => { el.textContent = ''; el.className = 'flash'; }, 4000);
 }
 
-// ── Share-link import (#setup=…) — before the store boots ──────────────────────
+// ── Share-link import (#setup=…) — adds a project, before the store boots ──────
+// Upserts into the projects list (match on owner+repo+branch) so opening a
+// link can never delete the recipient's other projects. Runs the legacy
+// migration first so it doesn't clobber a pre-projects single connection.
 
 function importSetupHash() {
   const m = location.hash.match(/[#&]setup=([A-Za-z0-9\-_]+)/);
   if (!m) return;
   try {
     const json = JSON.parse(b64DecodeUtf8(m[1].replace(/-/g, '+').replace(/_/g, '/')));
-    const prev = lsGet('wv:settings') || {};
-    const next = { ...prev };
-    for (const k of ['owner', 'repo', 'branch', 'token']) {
-      if (typeof json[k] === 'string' && json[k]) next[k] = json[k];
+    if (typeof json.owner !== 'string' || typeof json.repo !== 'string' || !json.owner || !json.repo) {
+      throw new Error('missing owner/repo');
     }
-    lsSet('wv:settings', next);
-    setTimeout(() => toast(`GitHub settings for ${next.owner}/${next.repo} imported from the link.`, 'ok'), 300);
+    const projects = migrateProjects();
+    const branch = (typeof json.branch === 'string' && json.branch) || 'main';
+    let p = projects.find(q => q.owner === json.owner && q.repo === json.repo && (q.branch || 'main') === branch);
+    if (p) {
+      if (typeof json.token === 'string' && json.token) p.token = json.token;
+      if (typeof json.name === 'string' && json.name) p.name = json.name;
+    } else {
+      p = {
+        id: 'p-' + Math.random().toString(36).slice(2, 8),
+        name: typeof json.name === 'string' ? json.name : '',
+        owner: json.owner, repo: json.repo, branch,
+        token: typeof json.token === 'string' ? json.token : '',
+      };
+      projects.push(p);
+    }
+    lsSet('wv:projects', projects);
+    lsSet('wv:active', p.id);
+    setTimeout(() => toast(`Project ${p.name || `${p.owner}/${p.repo}`} added from the link.`, 'ok'), 300);
   } catch {
     setTimeout(() => toast('The setup link could not be read.', 'err'), 300);
   }
@@ -126,18 +145,6 @@ function updateChrome() {
     saveBtn.disabled = n === 0;
   }
   saveBtn.classList.toggle('attention', n > 0 && !store.saving);
-
-  const label = document.getElementById('repo-label');
-  if (store.demo) {
-    label.textContent = 'demo data';
-    label.title = 'Demo mode — nothing is written to GitHub';
-  } else if (store.configured()) {
-    label.textContent = `${store.settings.owner}/${store.settings.repo}` + (store.syncing ? ' ⟳' : '');
-    label.title = `Branch ${store.settings.branch}`;
-  } else {
-    label.textContent = 'not connected';
-    label.title = 'Open settings to connect a GitHub data repository';
-  }
   updateBanner();
 }
 
@@ -145,13 +152,20 @@ function updateBanner() {
   const banner = document.getElementById('banner');
   const needsToken = !store.demo && store.configured() && !store.settings.token
     && store.lastError && ['not-found', 'auth', 'raw', 'forbidden'].includes(store.lastError.code);
-  if (!store.demo && !store.configured()) {
+  if (store.formatTooNew()) {
     banner.hidden = false;
     banner.innerHTML = `
+      <span>This data repo was saved by a newer version of WireVizard. Reload to update the app — saving is paused until then.</span>
+      <button class="btn b-reload-app">Reload</button>`;
+    banner.querySelector('.b-reload-app').addEventListener('click', () => location.reload());
+  } else if (!store.demo && !store.configured()) {
+    // zero projects: the welcome screen (projects.js) is the onboarding
+    banner.hidden = store.projects.length === 0;
+    banner.innerHTML = `
       <span>Not connected to GitHub — changes stay in this browser.</span>
-      <button class="btn b-settings">Open settings</button>
+      <button class="btn b-projects">Choose or add a project</button>
       <a class="btn" href="?demo=1">Try the demo</a>`;
-    banner.querySelector('.b-settings').addEventListener('click', openSettings);
+    banner.querySelector('.b-projects').addEventListener('click', openProjectModal);
   } else if (needsToken) {
     banner.hidden = false;
     banner.innerHTML = `
@@ -943,6 +957,13 @@ function boot() {
   initSettings();
   initDetails();
 
+  // one-time "what's new" notice after the app updated under the user's feet
+  const lastVersion = lsGet('wv:version');
+  if (lastVersion && lastVersion !== APP_VERSION) {
+    setTimeout(() => toast(`WireVizard updated to v${APP_VERSION} — tap to see what's new.`, 'info', 9000, CHANGELOG_URL), 800);
+  }
+  lsSet('wv:version', APP_VERSION);
+
   document.getElementById('tabs').addEventListener('click', e => {
     const b = e.target.closest('.tab');
     if (b) setTab(b.dataset.tab);
@@ -1112,6 +1133,7 @@ function boot() {
   });
 
   store.init();
+  initProjects();   // after store.init so projects/active are loaded
   setTab('query');
   updateChrome();
 

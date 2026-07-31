@@ -4,7 +4,9 @@
 
 import { store } from './store.js';
 import { toast } from './ui.js';
-import { b64EncodeUtf8, debounce } from './util.js';
+import { openProjectModal } from './projects.js';
+import { APP_VERSION, CHANGELOG_URL } from './version.js';
+import { b64EncodeUtf8, debounce, esc } from './util.js';
 
 let scrim, modal;
 const $ = sel => modal.querySelector(sel);
@@ -25,8 +27,16 @@ export function initSettings() {
     <div class="modal-body">
 
       <section>
-        <h3>GitHub data repository</h3>
-        <p class="hint">The cabling data (three CSV files) lives in its own — typically private — GitHub
+        <h3>Projects in this browser</h3>
+        <p class="hint">Each project is one data repository — e.g. one per cryostat. Removing a project only
+        forgets the connection and token in this browser; the repository and its data stay untouched.</p>
+        <div class="s-projects rows"></div>
+        <div class="btn-row"><button class="btn s-addproject">＋ Add project…</button></div>
+      </section>
+
+      <section>
+        <h3>Active project connection</h3>
+        <p class="hint">The cabling data lives in its own — typically private — GitHub
         repository. This app reads and writes it directly through the GitHub API; every save is one commit.</p>
         <div class="field-grid">
           <label class="field"><span class="field-name">Owner</span><input class="s-owner" placeholder="user or org" autocapitalize="off"></label>
@@ -64,6 +74,12 @@ export function initSettings() {
         <div class="btn-row">
           <button class="btn danger s-discard">Discard unsaved changes</button>
         </div>
+      </section>
+
+      <section>
+        <p class="hint">WireVizard v${APP_VERSION} ·
+          <a href="${CHANGELOG_URL}" target="_blank" rel="noopener">changelog</a> ·
+          <a href="https://github.com/fewagner/wirevizard" target="_blank" rel="noopener">source</a></p>
       </section>
 
     </div>`;
@@ -131,10 +147,12 @@ export function initSettings() {
     toast(store.lastError ? 'Reload failed: ' + store.lastError.message : 'Data reloaded from GitHub.', store.lastError ? 'err' : 'ok');
   });
 
+  $('.s-addproject').addEventListener('click', () => { closeSettings(); openProjectModal(); });
+
   $('.s-copylink').addEventListener('click', async () => {
-    const { owner, repo, branch, token } = store.settings;
+    const { owner, repo, branch, token, name } = store.settings;
     if (!token) { toast('Add a token first.', 'err'); return; }
-    const payload = b64EncodeUtf8(JSON.stringify({ owner, repo, branch, token }))
+    const payload = b64EncodeUtf8(JSON.stringify({ owner, repo, branch, token, name: name || '' }))
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     const url = `${location.origin}${location.pathname}#setup=${payload}`;
     try {
@@ -178,4 +196,37 @@ function renderAll() {
     : n
       ? `${n} changed file(s) are stored in this browser and survive reloads. "Save" commits them to GitHub.`
       : 'Everything is saved. Local edits are kept in this browser until you press Save.';
+  renderProjects();
+}
+
+function renderProjects() {
+  const host = $('.s-projects');
+  host.replaceChildren();
+  if (!store.projects.length) {
+    host.innerHTML = '<p class="hint">No projects yet.</p>';
+    return;
+  }
+  for (const p of store.projects) {
+    const isActive = store.active && p.id === store.active.id && !store.demo;
+    const row = document.createElement('div');
+    row.className = 'row s-proj-row';
+    row.innerHTML = `
+      <input class="s-proj-name inline-input" value="${esc(p.name || '')}" placeholder="${esc(`${p.owner}/${p.repo}`)}" maxlength="60" title="Project display name">
+      <span class="s-proj-repo">${esc(`${p.owner}/${p.repo}#${p.branch || 'main'}`)}${isActive ? ' ✓' : ''}</span>
+      ${isActive ? '' : `<button class="mini-btn s-proj-switch">Switch to</button>`}
+      <button class="mini-btn s-proj-remove" title="Forget this project in this browser (the repository stays untouched)">✕</button>`;
+    row.querySelector('.s-proj-name').addEventListener('change', e => {
+      p.name = e.target.value.trim();
+      store.saveSettings({});
+    });
+    row.querySelector('.s-proj-switch')?.addEventListener('click', () => store.switchProject(p.id));
+    row.querySelector('.s-proj-remove').addEventListener('click', () => {
+      if (!confirm(`Forget "${p.name || `${p.owner}/${p.repo}`}" in this browser?\nThe repository and its data stay untouched.`)) return;
+      const wasActive = isActive;
+      store.removeProject(p.id);
+      if (wasActive) { store.switchProject(store.projects[0]?.id || ''); return; }
+      renderProjects();
+    });
+    host.appendChild(row);
+  }
 }

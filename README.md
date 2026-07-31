@@ -16,10 +16,13 @@ This repository contains only the app — generic static HTML/CSS/JS with no bui
 
 ## Getting started
 
-1. Create a **private** data repository (e.g. `wirevizard-data`) containing `cables.csv`, `devices.csv`, `setups.csv` (the app can also bootstrap an empty repo — just add records and Save).
-2. Create a **fine-grained PAT**: github.com → Settings → Developer settings → Fine-grained tokens → *Repository access: only the data repo*, *Permissions → Contents: Read and write*.
-3. Open the app → **⚙ Settings** → enter owner, repository, branch and the token → *Test connection*.
-4. To onboard a colleague, use **Copy link with token** in Settings — the link embeds the connection settings (including the token!) in the URL fragment, which never reaches any server. Treat such links like the token itself.
+Open the app — the welcome screen walks you through it: create a **private** data repository (empty is fine; the app bootstraps it on the first save), create a **fine-grained PAT** (*Repository access: only that repo*, *Permissions → Contents: Read and write*), and connect. A browser can hold **several projects** (one data repo each, e.g. one per cryostat) — switch with the project button in the top bar; each project's unsaved draft is kept separately.
+
+To onboard a colleague, use **Copy link with token** in Settings — the link embeds the connection (including the token!) in the URL fragment, which never reaches any server, and opening it adds the project to their browser. Treat such links like the token itself.
+
+## Channels, versions, releases
+
+`main` deploys to [/wirevizard/](https://fewagner.com/wirevizard/) (production), `beta` to [/wirevizard/beta/](https://fewagner.com/wirevizard/beta/) (test channel, runs against your real projects). The app version is shown in Settings and links to the [changelog](CHANGELOG.md); after an update a one-time notice appears. A `meta.json` format marker in each data repo stops outdated cached clients from writing to data saved by a newer version. See [docs/RELEASING.md](docs/RELEASING.md) for the release flow and compatibility contract.
 
 ## Data model
 
