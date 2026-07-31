@@ -6,6 +6,7 @@
 import { store, migrateProjects } from './store.js';
 import { initSettings, openSettings } from './settings.js';
 import { initProjects, openProjectModal } from './projects.js';
+import { initHelp } from './help.js';
 import { APP_VERSION, CHANGELOG_URL } from './version.js';
 import { initDetails, openDetails, detailsBtnHtml, wireDetailsButtons } from './details.js';
 import { renderAllDiagram, renderQueryDiagram, isDiagramDragging } from './diagram.js';
@@ -956,6 +957,7 @@ function boot() {
   importSetupHash();
   initSettings();
   initDetails();
+  initHelp();
 
   // one-time "what's new" notice after the app updated under the user's feet
   const lastVersion = lsGet('wv:version');

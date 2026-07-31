@@ -260,6 +260,13 @@ code { font-family: monospace; font-size: 11px; }
 .s-proj-name { flex: 1; min-width: 90px; }
 .s-proj-repo { font-family: monospace; font-size: 10px; color: var(--text3); white-space: nowrap; }
 
+/* Help modal */
+.help-modal { width: min(640px, calc(100vw - 32px)); }
+.help-modal .modal-body p { font-size: 13px; line-height: 1.6; color: var(--text); margin-bottom: 6px; }
+.help-list { margin: 4px 0 4px 18px; font-size: 13px; line-height: 1.6; }
+.help-list li { margin-bottom: 6px; }
+.help-modal a { color: var(--accent); }
+
 /* Toasts */
 #toasts { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
           display: flex; flex-direction: column; gap: 8px; z-index: 60; align-items: center; }

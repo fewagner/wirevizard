@@ -3,6 +3,13 @@
 User-facing changes, newest first. The app shows a one-time notice after it
 updates; this file is what that notice links to.
 
+## v1.1.0 — 2026-07-31
+
+- **? Help button** in the top bar: a short guide covering the tabs, the
+  three ways to add cables (Add-cable tab, query diagram, setup tables),
+  where devices and ports are added, why pressing Save matters, and how the
+  public app / private data split works.
+
 ## v1.0.0 — 2026-07-31
 
 First numbered release. New in this version:
