@@ -384,9 +384,10 @@ function startEdit(td) {
 // ── Validate ───────────────────────────────────────────────────────────────────
 
 function renderValidate() {
-  const { errors, warnings } = validate(CABLES(), store.devices, SETUPS());
+  const { errors, warnings, portConflicts } = validate(CABLES(), store.devices, SETUPS());
+  const nWarn = warnings.length + portConflicts.length;
   let html = '';
-  if (!errors.length && !warnings.length) {
+  if (!errors.length && !nWarn) {
     html = `<div class="card ok-card">
       <div class="ok-title">✓ All ${CABLES().length} cables valid</div>
       <div style="font-size:12px;color:var(--text2)">No errors or conflicts detected.</div>
@@ -396,10 +397,24 @@ function renderValidate() {
       <div class="err-title">✗ ${errors.length} error(s)</div>
       ${errors.map(e => `<div class="vrow">${esc(e)}</div>`).join('')}
     </div>`;
-    if (warnings.length) html += `<div class="card warn-card">
-      <div class="warn-title">⚠ ${warnings.length} warning(s)</div>
-      ${warnings.map(w => `<div class="vrow">${esc(w)}</div>`).join('')}
-    </div>`;
+    if (nWarn) {
+      const conflictHtml = portConflicts.map(pc => `
+        <div class="vrow">
+          <div>Port conflict: <strong>${esc(pc.dev)}</strong> <code>[${esc(pc.port)}]</code> is used by ${pc.entries.length} cables:${pc.duplicate
+            ? ' <span class="v-dup">two cables connect the same two ports — likely a duplicate entry</span>' : ''}</div>
+          ${pc.entries.map(e => `
+            <div class="v-detail">
+              <a class="v-cable" data-v-cable="${esc(e.cable_id)}"><code>${esc(e.cable_id)}</code></a>
+              → ${esc(e.farDev)} <code>[${esc(e.farPort)}]</code>
+              ${e.setup ? `<span style="color:var(--text3)"> · ${esc(e.setup)}</span>` : ''}
+            </div>`).join('')}
+        </div>`).join('');
+      html += `<div class="card warn-card">
+        <div class="warn-title">⚠ ${nWarn} warning(s)</div>
+        ${warnings.map(w => `<div class="vrow">${esc(w)}</div>`).join('')}
+        ${conflictHtml}
+      </div>`;
+    }
   }
   document.getElementById('validate-out').innerHTML = html;
 }
@@ -1004,6 +1019,12 @@ function boot() {
     if (connect) { startWiringConnect(connect); return; }
     const cell = e.target.closest('td.wt-edit');
     if (cell) startWiringCellEdit(cell);
+  });
+
+  // conflicting-cable links in the Validate tab open the cable popup
+  document.getElementById('validate-out').addEventListener('click', e => {
+    const link = e.target.closest('[data-v-cable]');
+    if (link) openDetails('cable', link.dataset.vCable);
   });
 
   document.getElementById('search').addEventListener('input', renderAll);

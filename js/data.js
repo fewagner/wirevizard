@@ -367,13 +367,29 @@ export function validate(cables, devices, setups) {
       (portUsage[key] ||= []).push(c.cable_id);
     }
   });
+  // Port conflicts are returned structured, with each cable's far end, so the
+  // UI can show where the doubled cables lead (true duplicate vs. intentional).
+  const byId = new Map(cables.map(c => [c.cable_id, c]));
+  const portConflicts = [];
   for (const [k, ids] of Object.entries(portUsage)) {
-    if (ids.length > 1) {
-      const [dev, port] = k.split('::');
-      warnings.push(`Port conflict: ${dev} [${port}] used by: ${ids.join(', ')}`);
-    }
+    if (ids.length <= 1) continue;
+    const [dev, port] = k.split('::');
+    const entries = ids.map(id => {
+      const c = byId.get(id);
+      if (!c) return { cable_id: id, farDev: '?', farPort: '?', setup: '' };
+      const atFrom = c.from_device === dev && c.from_port === port;
+      return {
+        cable_id: id,
+        farDev: atFrom ? c.to_device : c.from_device,
+        farPort: atFrom ? c.to_port : c.from_port,
+        setup: c.setup || '',
+      };
+    });
+    const farKeys = entries.map(e => `${e.farDev}\x00${e.farPort}`);
+    const duplicate = new Set(farKeys).size < farKeys.length;
+    portConflicts.push({ dev, port, entries, duplicate });
   }
-  return { errors, warnings };
+  return { errors, warnings, portConflicts };
 }
 
 // ---------- signal paths ----------

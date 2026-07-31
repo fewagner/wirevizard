@@ -123,6 +123,11 @@ code { font-family: monospace; font-size: 11px; }
 .warn-title { color: var(--amber-text); font-weight: 500; margin-bottom: 8px; }
 .vrow { font-size: 12px; padding: 4px 0; border-bottom: 0.5px solid var(--border); }
 .vrow:last-child { border-bottom: none; }
+.v-detail { padding: 2px 0 2px 18px; font-size: 12px; }
+.v-cable { cursor: pointer; color: var(--accent); }
+.v-cable:hover code { text-decoration: underline; }
+.v-dup { background: var(--red-bg); color: var(--red-text); border-radius: 4px;
+         padding: 1px 7px; font-size: 11px; }
 
 .reload-btn { padding: 5px 14px; border-radius: 20px;
               border: 0.5px solid var(--border2); background: transparent;
