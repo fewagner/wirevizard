@@ -296,13 +296,12 @@ export function renderQueryDiagram(container, deviceName) {
     <details class="dg-form">
       <summary>＋ Add cable from ${esc(deviceName)}</summary>
       <div class="dg-form-grid">
-        <label>From port ${v.ports.length
+        <label>This port ${v.ports.length
           ? `<select class="qd-fport">${portOpts}</select>`
           : `<input class="qd-fport" type="text" placeholder="port">`}</label>
-        <label>To device <select class="qd-tdev">${devOpts}</select></label>
-        <label>To port <span class="qd-tport-wrap"><input class="qd-tport" type="text" placeholder="port"></span></label>
+        <label>Other device <select class="qd-tdev">${devOpts}</select></label>
+        <label>Other port <span class="qd-tport-wrap"><input class="qd-tport" type="text" placeholder="port"></span></label>
         <label>Setup <select class="qd-setup">${setupOpts}</select></label>
-        <label>Tag <input class="qd-tag" type="text" placeholder="optional"></label>
         <button class="btn qd-addcable">Add cable</button>
       </div>
     </details>
@@ -341,7 +340,7 @@ export function renderQueryDiagram(container, deviceName) {
         cable_id: '',
         from_device: deviceName, from_port: val('.qd-fport'),
         to_device: val('.qd-tdev'), to_port: val('.qd-tport'),
-        setup: val('.qd-setup'), tag: val('.qd-tag'),
+        setup: val('.qd-setup'),
       }));
       toast(`✓ Cable ${id} added — press Save to commit.`, 'ok');
     } catch (e) {

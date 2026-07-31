@@ -127,7 +127,7 @@ export function openDetails(type, key) {
   $('.dt-title').textContent = type === 'device' ? `Device ${key}` : `Cable ${key}`;
   $('.dt-sub').textContent = type === 'device'
     ? (rec.description || '')
-    : `${rec.from_device} [${rec.from_port}] → ${rec.to_device} [${rec.to_port}]${rec.setup ? ` · ${rec.setup}` : ''}`;
+    : `${rec.from_device} [${rec.from_port}] ↔ ${rec.to_device} [${rec.to_port}]${rec.setup ? ` · ${rec.setup}` : ''}`;
   $('.dt-comment').value = rec.comment || '';
   renderPreview();
   scrim.hidden = false;

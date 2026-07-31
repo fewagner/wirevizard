@@ -25,7 +25,7 @@ This repository contains only the app — generic static HTML/CSS/JS with no bui
 
 | File | Purpose |
 |---|---|
-| `cables.csv` | One row per physical cable: `cable_id, from_device, from_port, to_device, to_port, setup, comment` |
+| `cables.csv` | One row per physical cable: `cable_id, from_device, from_port, to_device, to_port, setup, comment` — cables are bidirectional; `from`/`to` is storage order only, signal direction follows from the connected ports |
 | `devices.csv` | Registry of devices; fixed columns `name, description, role, x, y, comment`, every further column one port |
 | `setups.csv` | Registry of measurement setups: `name, description` |
 | `images/` | Images attached to comments, uploaded through the app |

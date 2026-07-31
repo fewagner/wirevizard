@@ -109,9 +109,6 @@ td.editable input {
            font-size: 15px; line-height: 1; transition: all .15s; }
 .del-btn:hover { background: var(--red-bg); color: var(--red-text); border-color: currentColor; }
 
-.dir { font-size: 15px; }
-.dir-out { color: var(--blue-text); }
-.dir-in  { color: var(--green-text); }
 .empty { text-align: center; padding: 32px; color: var(--text3); font-size: 13px; }
 code { font-family: monospace; font-size: 11px; }
 

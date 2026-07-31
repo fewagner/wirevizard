@@ -209,14 +209,12 @@ function renderDeviceQuery() {
   const matches = CABLES().filter(c => c.from_device === selectedDevice || c.to_device === selectedDevice);
   if (!matches.length) { el.innerHTML = '<div class="empty">No cables found for this device</div>'; return; }
   const rows = matches.map(c => {
-    const out = c.from_device === selectedDevice;
-    const dir = out ? '<span class="dir dir-out">→</span>' : '<span class="dir dir-in">←</span>';
+    const here = c.from_device === selectedDevice;
     return `<tr>
       <td><code>${esc(c.cable_id)}</code></td>
-      <td>${dir}</td>
-      <td><code>${esc(out ? c.from_port : c.to_port)}</code></td>
-      <td><strong>${esc(out ? c.to_device : c.from_device)}</strong></td>
-      <td><code>${esc(out ? c.to_port : c.from_port)}</code></td>
+      <td><code>${esc(here ? c.from_port : c.to_port)}</code></td>
+      <td><strong>${esc(here ? c.to_device : c.from_device)}</strong></td>
+      <td><code>${esc(here ? c.to_port : c.from_port)}</code></td>
       <td style="color:var(--text2)">${esc(c.setup)}</td>
     </tr>`;
   }).join('');
@@ -227,8 +225,8 @@ function renderDeviceQuery() {
     </div>
     <table>
       <thead><tr>
-        <th>Cable</th><th>Dir</th><th>Local port</th>
-        <th>Remote device</th><th>Remote port</th><th>Setup</th>
+        <th>Cable</th><th>Local port</th>
+        <th>Other device</th><th>Other port</th><th>Setup</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
